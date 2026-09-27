@@ -207,12 +207,35 @@ The `outcome` is one of:
 > **If a write comes back `merged` but you were updating/contradicting the stored
 > fact, call `supersede`.** Auto-merge cannot tell a correction from a restatement.
 
+> **A `date` attr takes a full ISO date or a partial**: `2026-01-15`, `2026-01` or
+> `2026`, stored exactly as written. An out-of-range month or day is refused
+> (`2026-13`, `2026-02-30`), and a month must be zero-padded so dates sort in
+> order.
+
+> **An attr whose value does not fit its declared type is quarantined, and the
+> node is still stored.** The offending value is kept under `attrs.dropped` as
+> `{key: {value, error}}`, and the envelope carries `dropped_attrs`
+> (`[{"key": …, "value": …, "error": …}]`) so a caller sees what was set aside. A
+> required attr stays satisfied by its quarantined entry. A key the type does not
+> declare is still refused under a closed spec. `supersede` and `update` answer
+> the same way.
+
 ### `supersede` — replace a node, preserving history
 
 Atomically inserts a new node, flips the old node's `status` to `superseded`, and
 attaches a `supersedes` edge. Takes `old_id` (uuid, required) plus all of `write`'s
-fields (`scope`, `type`, `title`, `body`, `attrs`, `links`, `session_id`). Must be
-the same node type as the replacement.
+fields (`scope`, `type`, `title`, `body`, `attrs`, `links`, `session_id`). The old
+node must be `active`.
+
+> **A supersede that cannot complete is stored as a plain write.** Two cases do
+> this: a replacement whose `type` differs from the old node's, and a replacement
+> that bands as a near-duplicate of a third node (`merged` or
+> `needs_confirmation`). The envelope carries that band outcome and
+> `supersede_downgraded` (`reason`, `old_id`, `old_kept_active: true`), and has no
+> `superseded` key. The old node stays `active` and no `supersedes` edge is
+> written. A cross-type replacement is linked to the old node with `relates_to`
+> when the pack declares that rule, reported as `related_edge_added`. Resolve a
+> `needs_confirmation` downgrade with `resolve_duplicate`, the same as a write.
 
 ```jsonc
 {"old_id": "…old-uuid…", "scope": "personal-devon", "type": "preference",

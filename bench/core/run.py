@@ -67,8 +67,13 @@ from psycopg_pool import AsyncConnectionPool
 from engraphy.core import embedding
 
 from bench.adapters.locomo import LoCoMoLoader
-from bench.core.answer import READER_STANCES, Reader, build_reader_system
-from bench.core.diagnostics import compact_context, context_text, gold_support
+from bench.core.answer import READER_CONTRACTS, READER_STANCES, Reader, build_reader_system
+from bench.core.diagnostics import (
+    MAX_CONTEXT_NODES,
+    compact_context,
+    context_text,
+    gold_support,
+)
 from bench.core.corpus import Corpus, Question, dataset_digest
 from bench.core.extract import LLM_RETAIN_SOURCE_TEXT as _LLM_RETAIN_SOURCE_TEXT
 from bench.core.extract import LLMExtractor, VerbatimExtractor
@@ -81,7 +86,7 @@ from bench.core.providers import (
     ClaudeCLIClient, GeminiClient, OpenAICompatClient, QuotaExhausted,
     TransientRunStop, stop_class)
 from bench.core.report import aggregate, load_rows, render_failures, render_report
-from bench.core.retrieve import STRATEGIES, probe_search
+from bench.core.retrieve import DEFAULT_SEARCH_LIMIT, STRATEGIES, probe_search
 from bench.core.score import LLMJudgeScorer
 from bench.core.space import (
     PACK_FILES,
@@ -212,6 +217,10 @@ class Arm:
     # keeps `search_then_traverse` over multi-hop from being per-category
     # strategy selection (design/09 §Neutrality item 2).
     categories: tuple[str, ...] = ()
+    # Retrieval width for `search_only`. It enters the arm id only when it differs
+    # from the shipped default, so an arm id recorded before this field existed
+    # still names the same configuration.
+    k: int = DEFAULT_SEARCH_LIMIT
 
     @property
     def extractor_label(self) -> str:
@@ -220,7 +229,8 @@ class Arm:
 
     @property
     def arm_id(self) -> str:
-        return f"{self.extractor_label}/{self.strategy}/{self.policy}"
+        base = f"{self.extractor_label}/{self.strategy}/{self.policy}"
+        return base if self.k == DEFAULT_SEARCH_LIMIT else f"{base}/k{self.k}"
 
     def as_dict(self) -> dict:
         return {
@@ -230,6 +240,7 @@ class Arm:
             "strategy": self.strategy,
             "confirm_policy": self.policy,
             "categories": list(self.categories) or "all",
+            "k": self.k,
         }
 
     def wants(self, q: Question) -> bool:
@@ -237,7 +248,10 @@ class Arm:
 
 
 def parse_arm(spec: str) -> Arm:
-    """`<extractor>[-<pack>]:strategy[:categories[:policy]]`.
+    """`<extractor>[-<pack>]:strategy[:categories[:policy]][:k=N]`.
+
+    `k=N` sets the search width of a `search_only` arm; it may sit in any position
+    after the strategy.
 
     The first token folds extractor and pack together, matching the matrix
     labels: `verbatim`, `llm-starter`, `llm-conversational`. A bare extractor
@@ -250,8 +264,19 @@ def parse_arm(spec: str) -> Arm:
     label, strategy = parts[0], parts[1]
     extractor, _, pack = label.partition("-")
     pack = pack or "starter"
-    cats = tuple(c for c in (parts[2].split(",") if len(parts) > 2 and parts[2] else ()) if c)
-    policy = parts[3] if len(parts) > 3 and parts[3] else "always_distinct"
+    options = [p for p in parts[2:] if "=" in p]
+    positional = [p for p in parts[2:] if "=" not in p]
+    cats = tuple(c for c in (positional[0].split(",") if positional and positional[0] else ())
+                 if c)
+    policy = positional[1] if len(positional) > 1 and positional[1] else "always_distinct"
+    k = DEFAULT_SEARCH_LIMIT
+    for opt in options:
+        key, _, value = opt.partition("=")
+        if key != "k":
+            raise SystemExit(f"--arm {spec!r}: unknown option {key!r} (have 'k')")
+        if not value.isdigit() or int(value) < 1:
+            raise SystemExit(f"--arm {spec!r}: k must be a positive integer")
+        k = int(value)
     if extractor not in EXTRACTORS:
         raise SystemExit(f"--arm {spec!r}: unknown extractor {extractor!r} (have {EXTRACTORS})")
     if pack not in PACK_FILES:
@@ -260,7 +285,25 @@ def parse_arm(spec: str) -> Arm:
         raise SystemExit(f"--arm {spec!r}: unknown strategy (have {sorted(STRATEGIES)})")
     if policy not in POLICIES:
         raise SystemExit(f"--arm {spec!r}: unknown confirm policy (have {POLICIES})")
-    return Arm(extractor=extractor, pack=pack, strategy=strategy, policy=policy, categories=cats)
+    if k != DEFAULT_SEARCH_LIMIT and strategy != "search_only":
+        raise SystemExit(f"--arm {spec!r}: k applies only to the search_only strategy")
+    return Arm(extractor=extractor, pack=pack, strategy=strategy, policy=policy,
+               categories=cats, k=k)
+
+
+def strategy_for(arm: Arm):
+    """The arm's retrieval strategy, at the arm's width where the strategy has one."""
+    if arm.strategy == "search_only":
+        return STRATEGIES[arm.strategy](limit=arm.k)
+    return STRATEGIES[arm.strategy]()
+
+
+def retrieval_config(arm: Arm) -> dict:
+    """What the manifest records about an arm's retrieval."""
+    strategy = strategy_for(arm)
+    return {"strategy": arm.strategy,
+            **{name: getattr(strategy, name) for name in ("limit", "detail", "seed_limit")
+               if hasattr(strategy, name)}}
 
 
 @dataclass(frozen=True, slots=True)
@@ -493,7 +536,7 @@ async def _retrieve_with_retry(strategy, pool, arm_space, q, meter, *, tries: in
 # ------------------------------------------------------------------------- answer
 async def phase_answer(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
                        pack_spaces: dict, principal: str, *, concurrency: int,
-                       stance: str = "grounded",
+                       stance: str = "grounded", contract: str = "verify",
                        provider: str = "claude-cli") -> None:
     """Retrieve and read, checkpointing each answer the moment it returns.
 
@@ -502,11 +545,12 @@ async def phase_answer(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
     number run concurrently. Each result is appended as it completes rather than
     per batch: a kill between two answers costs at most the one in flight.
     """
-    reader = Reader(_client_for("reader", provider), stance=stance)
+    reader = Reader(_client_for("reader", provider), stance=stance,
+                    contract=contract)
     have = ck.keys("answers.jsonl", "arm", "question_id")
 
     for arm in arms:
-        strategy = STRATEGIES[arm.strategy]()
+        strategy = strategy_for(arm)
         space_id, _ = pack_spaces[arm.pack]
         arm_space = ArmSpace(space_id, principal, arm.extractor)
         todo = [q for q in corpus.questions
@@ -552,7 +596,9 @@ async def phase_answer(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
             # retrievals. It is deferred to the sequential `diagnose` phase, which
             # also keeps the diagnostic probe from bumping recall stats during
             # measurement.
-            compact = compact_context(retrieval.envelope)
+            # At least the arm's width, so a wider arm's diagnostics see every result.
+            compact = compact_context(retrieval.envelope,
+                                      max_nodes=max(MAX_CONTEXT_NODES, arm.k))
             gold_in_context = None
             if not q.abstain_expected and str(q.gold_answer).strip():
                 gold_in_context = gold_support(q.gold_answer, context_text(compact))
@@ -1286,6 +1332,7 @@ def build_manifest(args, corpus: Corpus, arms: list[Arm], pack_meta: dict,
         "haystacks": [h.haystack_id for h in corpus.haystacks],
         "corpus": corpus.stats(),
         "arms": [a.as_dict() for a in arms],
+        "retrieval_configs": {a.arm_id: retrieval_config(a) for a in arms},
         "provider": args.provider,
         "role_models": _role_models_manifest(args),
         # Endpoint hosts and structured-output mode for every distinct client the
@@ -1459,6 +1506,10 @@ async def main() -> int:
                     help="Per-space config row applied to EVERY arm's space identically, "
                          "e.g. --space-config dedup.t_high=0.98 (value parsed as JSON). "
                          "Repeatable. Recorded in the manifest.")
+    ap.add_argument("--reader-contract", default="verify", choices=sorted(READER_CONTRACTS),
+                    help="how the reader lays out its reply: 'verify' (default) names the "
+                         "subject, the fact asked for and the memory stating it on a CHECK "
+                         "line before the ANSWER line; 'direct' is the single-line reply")
     ap.add_argument("--calibration-sample", type=int, default=40)
     ap.add_argument("--provider", default="claude-cli", choices=sorted(PROVIDERS),
                     help="which route the extractor, reader and adjudicator run on. "
@@ -1539,7 +1590,8 @@ async def main() -> int:
               f"{len(pack_meta[pn]['node_types'])} node types)")
 
     representative_space = pack_spaces[pack_names[0]][0]
-    _reader_system, reader_manifest = build_reader_system(args.reader_stance)
+    _reader_system, reader_manifest = build_reader_system(args.reader_stance,
+                                                          contract=args.reader_contract)
     reader_manifest = {**reader_manifest, "effort": "medium",
                        "model": ROLE_MODELS["reader"]["model"]}
 
@@ -1564,7 +1616,8 @@ async def main() -> int:
             print("\n== answer ==")
             await phase_answer(pool, ck, corpus, arms, pack_spaces, "bench",
                                concurrency=args.concurrency, stance=args.reader_stance,
-                               provider=args.provider)
+                               provider=args.provider,
+                               contract=args.reader_contract)
     except QuotaExhausted as exc:
         # A usage limit during answering is a clean, resumable stop -- the errored
         # questions were NOT checkpointed, so a resume re-answers them. Skip the
