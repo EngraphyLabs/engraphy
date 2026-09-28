@@ -27,7 +27,7 @@
         "similarity": 0.87
       }
     ],
-    "instruction": "Call resolve_duplicate with resolution 'distinct' or 'merge'."
+    "instruction": "Nothing is saved yet. Call resolve_duplicate now, in this same turn, with resolution 'distinct' (this write makes a different claim from the candidate) or 'merge' plus merge_into (it is the same claim). Unresolved, this write expires at expires_at and is lost."
   },
   "volatile": [
     "response.pending_id",

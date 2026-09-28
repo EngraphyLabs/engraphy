@@ -1,0 +1,41 @@
+{
+  "_comment": [
+    "Engraphy hook wiring for Claude Code. Merge the `hooks` block into",
+    "~/.claude/settings.json (every project) or .claude/settings.json (this",
+    "project), and replace <ENGRAPHY> with the path to your checkout.",
+    "",
+    "SessionStart names the scope and states the pre-work contract. It fires",
+    "before any user message exists, so the hinted half of the briefing runs on",
+    "UserPromptSubmit instead, once per session, where the first request is",
+    "available to use as the hint.",
+    "",
+    "The hooks inject context and make no network call, so they need no token",
+    "and cannot stall a session. Both exit 0 on every path; the timeouts are a",
+    "second guard, and a hook that exceeds one is killed with the session",
+    "carrying on."
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"<ENGRAPHY>/agent/claude-code/hooks/engraphy_cue.py\" session-start",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"<ENGRAPHY>/agent/claude-code/hooks/engraphy_cue.py\" prompt",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -12,7 +12,12 @@ async def test_list_tools_for_space_returns_all_core_tools_with_base_description
     # (space_admin_tools unset -> enabled) and are covered by test_admin.py.
     assert set(CORE_DISPATCH) <= names
     write_entry = next(e for e in entries if e["name"] == "write")
-    assert write_entry["description"].startswith("Dedup-banded write")
+    # The description is the agent's only cue for WHEN to write, so it names
+    # the moment and both follow-ups the outcomes can oblige (test_agent_cueing
+    # holds every core tool to that standard).
+    assert "same turn" in write_entry["description"]
+    assert "needs_confirmation" in write_entry["description"]
+    assert "supersede" in write_entry["description"]
     assert write_entry["inputSchema"]["required"] == ["body", "scope", "title", "type"]
     # traverse's `direction` is required: core_traverse raises on a missing/
     # invalid value (design/07), so the documentary schema must declare it even

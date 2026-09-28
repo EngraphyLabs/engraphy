@@ -175,7 +175,7 @@ The `outcome` is one of:
 | `inserted` | new node created; envelope has `node`. |
 | `merged` | absorbed into an existing canonical (a near-verbatim restatement with high token overlap); envelope has **`canonical`** (the node it merged into — `id`, `type`, `scope`, `title`, `body`, `attrs`, `status`, `author`, `created_at`), `similarity`, `addendum_added`, `links_attached`/`links_skipped`, and an `instruction` to call `supersede` if you were *correcting* rather than restating. |
 | `merged_linked` | same topic but distinct wording/content — inserted as its **own** node and `same_topic`-linked; envelope has `node` (the new member) and `similarity`. |
-| `needs_confirmation` | borderline (pending band) — nothing written yet; envelope has `pending_id`, `similarity`, and an `instruction` to call `resolve_duplicate`. |
+| `needs_confirmation` | borderline (pending band): nothing is written yet; envelope has `pending_id`, `similarity`, `expires_at` (24h), and an `instruction` to call `resolve_duplicate` in the same turn, which is the call that saves the node. |
 
 > Which of `merged` / `merged_linked` / `needs_confirmation` you get depends on the
 > *embedding similarity* and *novelty* of the text: an identical restatement absorbs

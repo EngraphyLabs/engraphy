@@ -54,6 +54,20 @@ MERGED_INSTRUCTION = (
     "canonical id to make your version the current fact."
 )
 
+#: The pending band's half of the same contract. A parked write is the one
+#: outcome where the agent's work is not yet stored, and an agent that reads
+#: "pending" as "done" loses the memory when the 24h TTL sweeps it. So the
+#: string states the consequence, the deadline and the two resolutions, not
+#: only the name of the call. Byte-pinned by 07's example and
+#: fixtures/wire/write_needs_confirmation.json -- do not reword without
+#: amending both.
+PENDING_INSTRUCTION = (
+    "Nothing is saved yet. Call resolve_duplicate now, in this same turn, with "
+    "resolution 'distinct' (this write makes a different claim from the candidate) "
+    "or 'merge' plus merge_into (it is the same claim). Unresolved, this write "
+    "expires at expires_at and is lost."
+)
+
 # 07 §Exact formulas names this as config key `resonance.floor`, default 0.75.
 # Carried as a default argument, matching BandThresholds' handling of the
 # `dedup.t_high`/`dedup.t_low` config keys.
@@ -917,7 +931,10 @@ async def _do_pending(cur, space_id, principal, node_type, scope_id, title, body
         "pending_id": str(pending_id),
         "expires_at": expires_at.isoformat(),
         "candidates": candidate_rows,
-        "instruction": "Call resolve_duplicate with resolution 'distinct' or 'merge'.",
+        # This envelope is the only place an agent learns that a parked write is
+        # not a finished one, so the instruction carries the consequence as well
+        # as the call (see PENDING_INSTRUCTION).
+        "instruction": PENDING_INSTRUCTION,
     }
 
 

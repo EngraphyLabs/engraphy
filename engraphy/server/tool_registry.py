@@ -72,22 +72,60 @@ ADMIN_DISPATCH = {
 }
 
 # design/03 s.The tool surface -- the engine's own one-line text per tool.
+#
+# A description is the only thing an agent reads when it decides whether a tool
+# is worth calling, so each line names the MOMENT to call it and the follow-up
+# the call can oblige, not only the mechanism it runs. A pack's
+# `tool_descriptions` entry REPLACES the line for that tool, so an override has
+# to carry its whole contract too; packs/dev/pack.yaml is the worked example.
 _BASE_DESCRIPTIONS = {
-    "briefing": "Pack-driven session-start sections: due commitments, relevant preferences and notes.",
-    "search": "Hybrid + RRF search across one scope or 'all'.",
-    "traverse": "Recursive graph walk from a starting node.",
-    "get": "Full nodes plus edge summaries, up to 25 ids.",
-    "pending_list": "List your pending duplicate-check writes awaiting confirmation (read-only).",
-    "stats": "Usage metrics — totals + a zero-filled daily series, grouped by 'space' (all principals) or 'user' (you); read-only.",
-    "write": (
-        "Dedup-banded write; returns the written node or a duplicate-check verdict, plus a "
-        "resonance report. If the result is 'merged' but your text contradicted or updated "
-        "the stored fact rather than restating it, call supersede."
+    "briefing": (
+        "Call this at the start of a task, before your first substantive action: it returns "
+        "this space's session-start sections, which are what stands, what is due, and what is "
+        "relevant to your hint. Pass the request as `hint`, or the relevant section comes back "
+        "empty."
     ),
-    "link": "Attach typed edges between existing nodes, rule-checked.",
+    "search": (
+        "Call this before you act in territory you have not already loaded in this session: "
+        "hybrid + RRF search across one scope or 'all', returning what memory already holds. "
+        "Search with the names, paths and topics you are about to work on."
+    ),
+    "traverse": (
+        "Recursive graph walk from a starting node: call it when a recalled memory names "
+        "something whose chain you need, such as what it attaches to or who it involves."
+    ),
+    "get": "Full nodes plus edge summaries, up to 25 ids: hydrate what a search or briefing returned in brief.",
+    "pending_list": (
+        "List your parked writes: a duplicate check stopped each one, and they are NOT saved "
+        "until you resolve them. Call this at the start of a session, and resolve whatever it "
+        "returns (read-only)."
+    ),
+    "stats": "Usage metrics: totals plus a zero-filled daily series, grouped by 'space' (all principals) or 'user' (you); read-only.",
+    "write": (
+        "Save a durable fact the moment it is stated, in that same turn rather than at the end "
+        "of the session: what was decided, preferred, learned, or is to be avoided. The server "
+        "deduplicates, so re-telling is safe. Dedup-banded: returns the written node or a "
+        "duplicate-check verdict, plus a resonance report. If the outcome is "
+        "'needs_confirmation' then nothing is saved yet, so call resolve_duplicate now. If it "
+        "is 'merged' but your text contradicted or updated the stored fact rather than "
+        "restating it, call supersede."
+    ),
+    "link": (
+        "Attach typed edges between existing nodes, rule-checked: link a new memory to what it "
+        "is about, so one read of that anchor returns everything recorded on it."
+    ),
     "update": "Update a node's title/body/attrs; re-embeds only if the text actually changed.",
-    "supersede": "Atomically replace a node with a new one and flip the old one's status.",
-    "resolve_duplicate": "Resolve a pending duplicate-check verdict as distinct or merge.",
+    "supersede": (
+        "Atomically replace a node with a new one and flip the old one's status: the call for a "
+        "fact that has CHANGED, which a plain write would absorb into the stale node, leaving "
+        "the old claim current."
+    ),
+    "resolve_duplicate": (
+        "Finish a parked write: 'distinct' keeps both, which is right whenever the parked write "
+        "makes a different claim from the candidate, and 'merge' folds it into the candidate "
+        "named in merge_into. Until this call the write is not saved, and it expires 24 hours "
+        "after the write that parked it."
+    ),
     "scope_list": "List the scopes this token can read.",
     "scope_guide": (
         "The routing manifest: every scope you can write to, each with a description of what it "
