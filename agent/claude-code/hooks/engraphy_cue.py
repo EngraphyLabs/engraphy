@@ -61,9 +61,14 @@ MIN_TASK_CHARS = 12
 #: and how much of any one body it keeps. Both raisable from the environment.
 MAX_CONTEXT_CHARS = int(os.environ.get("ENGRAPHY_BRIEFING_CHARS", "6000"))
 MAX_BODY_CHARS = int(os.environ.get("ENGRAPHY_BRIEFING_BODY_CHARS", "500"))
-#: Session start must not stall the session; the settings snippet's hook
-#: timeout is the outer guard, this is the inner one.
-TIMEOUT = float(os.environ.get("ENGRAPHY_HOOK_TIMEOUT", "8"))
+#: Session start must not stall the session. TIMEOUT caps one call; BUDGET
+#: caps the whole hook, because a host that accepts a connection and then goes
+#: quiet costs a full timeout per call, and three of those outlast the
+#: harness's own hook timeout: the hook is killed, and the session gets
+#: neither memory nor the line saying it has none. The settings snippet's
+#: timeout (10s) is the outer guard; this budget sits inside it.
+TIMEOUT = float(os.environ.get("ENGRAPHY_HOOK_TIMEOUT", "4"))
+BUDGET = float(os.environ.get("ENGRAPHY_HOOK_BUDGET", "6"))
 
 FENCE = "engraphy-memory"
 DEGRADED = (
@@ -118,39 +123,62 @@ def repo_url(cwd: str) -> str | None:
     return done.stdout.strip() or None
 
 
+def normalize_remote(text: str) -> str:
+    """A remote URL reduced to `host/owner/repo`, so the same repository
+    written three ways compares equal: `https://github.com/acme/api.git`,
+    `git@github.com:acme/api` and `ssh://git@github.com/acme/api.git`."""
+    value = (text or "").strip().lower()
+    value = re.sub(r"^[a-z][a-z0-9+.-]*://", "", value)  # scheme
+    value = re.sub(r"^[^/@]+@", "", value)               # user@
+    value = value.replace(":", "/", 1) if "@" not in value and ":" in value.split("/")[0] else value
+    value = re.sub(r"^([^/]+):", r"\1/", value)          # scp-style host:path
+    value = value.rstrip("/").removesuffix(".git")
+    return re.sub(r"/+", "/", value)
+
+
 def pick_scope(scopes: list[dict], proposed: str | None, repo: str | None, cwd: str) -> str | None:
     """The scope this checkout belongs to, out of the ones the token can read.
 
     An existing scope wins over the naming convention, which is why the id is
     only the first of three matches tried: the id, then a scope whose `hints`
-    name this repository, then a scope whose id is the repository's own name
-    under any prefix. None means nothing matched, and the agent is asked.
+    name this repository, then a scope whose id ends in the repository's own
+    name under another prefix. None means nothing matched, and the agent is
+    asked rather than guessing.
+
+    The matches are deliberately exact. A loose substring would resolve a
+    repository called `api` or `ui` to any scope mentioning either, and a
+    session started in a home directory to `personal-<user>`, and the scope
+    this returns is the one the session then writes to.
     """
     ids = {s.get("id") for s in scopes if isinstance(s, dict)}
     if proposed and proposed in ids:
         return proposed
 
-    needles = {n for n in (slug(pathlib.Path(cwd).name),) if n}
+    names = {slug(pathlib.Path(cwd).name)}
+    urls = set()
     if repo:
-        tail = repo.strip().rstrip("/").removesuffix(".git")
-        needles.add(slug(re.split(r"[/:]", tail)[-1] if tail else ""))
-        needles.add(repo.strip())
-    needles.discard("")
+        names.add(slug(re.split(r"[/:]", repo.strip().rstrip("/").removesuffix(".git"))[-1]))
+        urls.add(normalize_remote(repo))
+    names.discard("")
+    urls.discard("")
 
     for scope in scopes:
-        hints = scope.get("hints") or []
-        for hint in hints:
+        for hint in scope.get("hints") or []:
             hint_text = str(hint).strip()
             if not hint_text:
                 continue
-            if any(n and (n == slug(hint_text) or n in hint_text) for n in needles):
+            if slug(hint_text) in names or normalize_remote(hint_text) in urls:
                 return scope.get("id")
 
+    # A scope under another prefix, `proj-billing-api` for `billing-api`. Short
+    # names collide too easily to be worth matching this way, and a personal
+    # scope is never a repository's: a session started in a home directory
+    # would otherwise resolve to `personal-<user>` and write there.
     for scope in scopes:
         sid = str(scope.get("id") or "")
-        if any(n and sid.rsplit("-", 1)[-1] == n for n in needles):
-            return sid
-        if any(n and sid.endswith("-" + n) for n in needles):
+        if sid.startswith("personal-"):
+            continue
+        if any(len(n) >= 4 and sid.endswith("-" + n) for n in names):
             return sid
     return None
 
@@ -346,7 +374,7 @@ def session_start(event: dict, plain: bool) -> int:
     proposed = scope_for_repo(repo, cwd)
     session_id = event.get("session_id")
 
-    client = engraphy_client.connect(timeout=TIMEOUT)
+    client = engraphy_client.connect(timeout=TIMEOUT, budget=BUDGET)
     if client is None:
         # Not registered on this machine, which is a setup state rather than an
         # outage: the contract still holds for a session that has the tools.
@@ -354,7 +382,7 @@ def session_start(event: dict, plain: bool) -> int:
         emit("SessionStart", contract(proposed, briefed=False), plain)
         return 0
 
-    listed = client.call("scope_list")
+    listed = client.call("scope_list") if client.ready else None
     if listed is None:
         write_state(session_id, {"scope": proposed})
         emit("SessionStart", contract(proposed, briefed=False, reachable=False), plain)
@@ -394,10 +422,10 @@ def prompt(event: dict, plain: bool) -> int:
     if not scope:
         return 0
 
-    client = engraphy_client.connect(timeout=TIMEOUT)
+    client = engraphy_client.connect(timeout=TIMEOUT, budget=BUDGET)
     memory = ""
     briefed = False
-    if client is not None:
+    if client is not None and client.ready:
         # Only what the hint adds: session start already injected the standing
         # sections, and those same nodes come back in every briefing.
         hinted = client.call("briefing", {"scope": scope, "hint": text[:MAX_HINT]})

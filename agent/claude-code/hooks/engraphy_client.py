@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import time
 import urllib.error
 import urllib.request
 
@@ -93,46 +94,89 @@ def _parse(body: bytes, content_type: str) -> dict | None:
 
 
 class Client:
-    """One POST per call, no session state, every failure a None."""
+    """One POST per call, every failure a None, and one deadline for them all.
 
-    def __init__(self, url: str, headers: dict[str, str], timeout: float = 8.0):
+    The budget is what makes the degraded path work. A host that refuses a
+    connection fails in milliseconds, but one that accepts and then goes quiet
+    (a sleeping laptop, a dropped tunnel) costs a full socket timeout per call,
+    and three of those in a row outlast the harness's own hook timeout: the
+    hook is killed, and the session gets neither memory nor the line saying it
+    has none. So every call shares one wall-clock budget, and once it is spent
+    the client stops trying and lets the caller say so.
+    """
+
+    def __init__(self, url: str, headers: dict[str, str], timeout: float = 8.0,
+                 budget: float | None = None):
         self.url = url
         self.headers = headers
         self.timeout = timeout
+        self.deadline = time.monotonic() + (budget if budget is not None else timeout)
+        self.session_id: str | None = None
+        self.ready = False
         self._id = 0
+
+    def _remaining(self) -> float:
+        return self.deadline - time.monotonic()
+
+    def _request(self, body: dict) -> tuple[dict | None, dict]:
+        """(message, response headers). Anything unexpected is (None, {})."""
+        remaining = self._remaining()
+        if remaining <= 0.25:  # too little left to be worth a socket
+            return None, {}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "MCP-Protocol-Version": PROTOCOL_VERSION,
+            **self.headers,
+        }
+        if self.session_id:
+            headers["Mcp-Session-Id"] = self.session_id
+        request = urllib.request.Request(
+            self.url, data=json.dumps(body).encode("utf-8"), method="POST", headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(
+                request, timeout=min(self.timeout, remaining)
+            ) as response:
+                return (_parse(response.read(), response.headers.get("Content-Type", "")),
+                        dict(response.headers))
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+            return None, {}
 
     def _post(self, method: str, params: dict) -> dict | None:
         self._id += 1
-        payload = json.dumps(
-            {"jsonrpc": "2.0", "id": self._id, "method": method, "params": params}
-        ).encode("utf-8")
-        request = urllib.request.Request(
-            self.url, data=payload, method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-                "MCP-Protocol-Version": PROTOCOL_VERSION,
-                **self.headers,
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                message = _parse(response.read(), response.headers.get("Content-Type", ""))
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-            return None
+        message, _ = self._request(
+            {"jsonrpc": "2.0", "id": self._id, "method": method, "params": params})
         if not message or "result" not in message:
             return None
         result = message["result"]
         return result if isinstance(result, dict) else None
 
     def initialize(self) -> bool:
-        """Stateless transports accept a call without it, and a stateful one
-        does not, so it is sent and its failure is not fatal."""
-        return self._post("initialize", {
-            "protocolVersion": PROTOCOL_VERSION,
-            "capabilities": {},
-            "clientInfo": CLIENT_INFO,
-        }) is not None
+        """The handshake, and the one call whose failure ends the attempt.
+
+        A stateless server (this engine) answers and issues no session id. A
+        stateful one issues `Mcp-Session-Id`, which every later call has to
+        echo, and expects `notifications/initialized` before it serves a tool.
+        Both are handled here so the hook works against either.
+        """
+        self._id += 1
+        message, headers = self._request({
+            "jsonrpc": "2.0", "id": self._id, "method": "initialize",
+            "params": {"protocolVersion": PROTOCOL_VERSION, "capabilities": {},
+                       "clientInfo": CLIENT_INFO},
+        })
+        if not message or "result" not in message:
+            self.ready = False
+            return False
+        for key, value in headers.items():
+            if key.lower() == "mcp-session-id" and value:
+                self.session_id = value
+                # Stateful: the server expects the notification before work.
+                self._request({"jsonrpc": "2.0", "method": "notifications/initialized"})
+                break
+        self.ready = True
+        return True
 
     def call(self, tool: str, arguments: dict | None = None) -> dict | None:
         """A tool's envelope, or None. `structuredContent` is the envelope the
@@ -155,12 +199,18 @@ class Client:
         return None
 
 
-def connect(timeout: float = 8.0, config_path: pathlib.Path | None = None) -> Client | None:
-    """A ready client, or None when Engraphy is not registered on this machine."""
+def connect(timeout: float = 8.0, config_path: pathlib.Path | None = None,
+            budget: float | None = None) -> Client | None:
+    """A client, or None when Engraphy is not registered on this machine.
+
+    Registration and reachability are different states and the caller says
+    different things about them, so a client that could not shake hands comes
+    back with `ready` false rather than as None.
+    """
     found = registration(config_path)
     if not found:
         return None
     url, headers = found
-    client = Client(url, headers, timeout=timeout)
+    client = Client(url, headers, timeout=timeout, budget=budget)
     client.initialize()
     return client

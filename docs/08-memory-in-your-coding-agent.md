@@ -118,10 +118,10 @@ step 1.
 
 ### Confirm both levers are live
 
-VS Code asks you to confirm a tool call the first time it runs one. Approve
-the memory tools for the workspace when it offers, so `briefing`, `search` and
-`write` do not need a click each time: a prompt on every recall is the friction
-that ends with memory switched off.
+VS Code asks you to confirm a tool call before it runs. Take the dialog's
+option that keeps allowing that tool, for `briefing`, `search` and `write` at
+least: a prompt on every recall is the friction that ends with memory switched
+off.
 
 Start a new chat, then:
 
@@ -179,12 +179,23 @@ degrades the session to the text-only contract, and says so.
 `/memory` lists the instruction files in play, and the hook's context appears
 at the top of a new session.
 
-**Which space the home agent points at matters.** The hooks and the block name
-types from the dev pack, so a session whose `engraphy` registration points at a
-space on another pack can read memory but cannot write an `anti_pattern` or a
-`boundary` there: the write is refused as an unknown type. Either point the
-home agent at a space on the dev pack, or run `pack upgrade` on the space it
-already uses, knowing it replaces that space's briefing and tool descriptions.
+**The space this agent points at needs the dev vocabulary.** The hooks and
+the block name the dev pack's types, so a session pointed at a space on another
+pack reads memory fine and cannot write an `anti_pattern` or a `boundary`
+there: the write is refused as an unknown type.
+
+Two routes, depending on what that space already is:
+
+- **A space of its own for code work**, created as in step 1. Clean, and its
+  memory is separate from whatever else that engine holds.
+- **The space you already use**, by adding the dev types to its own pack: copy
+  the `node_types`, `edge_types` and `edge_rules` you want out of
+  `packs/dev/pack.yaml` into your pack, keep everything that space already
+  declares, and run `engraphy-admin pack upgrade <your pack> --space <space>`.
+  Adding types is applied immediately; the upgrade refuses to drop a type that
+  still holds memories, which is what keeps this safe. Take the dev pack's
+  `briefing` and `tool_descriptions` in the same edit if you want the
+  session-start sections and the cues, since an upgrade replaces both.
 
 ## 5. Check that it works
 

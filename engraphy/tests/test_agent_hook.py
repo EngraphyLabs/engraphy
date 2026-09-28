@@ -18,7 +18,8 @@ import pathlib
 import subprocess
 import sys
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 
 import pytest
 
@@ -215,6 +216,25 @@ def test_pick_scope_matches_a_scope_under_another_prefix():
     assert cue.pick_scope(scopes, "code-engraphy", None, "/x/engraphy") == "proj-engraphy"
 
 
+def test_pick_scope_ignores_a_hint_that_merely_contains_the_name():
+    # `api` inside another sentence is not this repository, and the scope this
+    # returns is the one the session writes to.
+    scopes = [{"id": "proj-platform", "hints": ["the api gateway team's notes"]}]
+    assert cue.pick_scope(scopes, "code-api", None, "/x/api") is None
+
+
+def test_pick_scope_does_not_resolve_a_home_directory_to_the_personal_scope():
+    scopes = [{"id": "personal-devon", "hints": []}]
+    assert cue.pick_scope(scopes, "code-devon", None, "/c/Users/devon") is None
+
+
+def test_pick_scope_matches_a_hint_holding_the_remote_url():
+    scopes = [{"id": "proj-billing", "hints": ["https://github.com/acme/billing-api.git"]}]
+    assert cue.pick_scope(scopes, "code-billing-api",
+                          "https://github.com/acme/billing-api.git",
+                          "/x/billing-api") == "proj-billing"
+
+
 def test_pick_scope_is_none_when_nothing_matches():
     scopes = [{"id": "personal-devon", "hints": []}]
     assert cue.pick_scope(scopes, "code-billing-api", None, "/x/billing-api") is None
@@ -274,8 +294,14 @@ def test_the_contract_says_so_when_memory_is_unreachable():
 
 # ---------------------------------------------------------------- end to end
 
-def _run(args, event, state_dir, url=None):
-    env = {**os.environ, "ENGRAPHY_STATE_DIR": str(state_dir)}
+def _run(args, event, state_dir, url=None, home=None):
+    # HOME and USERPROFILE point at a scratch directory so the hook reads no
+    # real registration: pathlib.Path.home() takes USERPROFILE on Windows and
+    # HOME elsewhere, and without this the no-URL cases would fall through to
+    # this machine's own ~/.claude.json and call the live engine.
+    sandbox = str(home or state_dir)
+    env = {**os.environ, "ENGRAPHY_STATE_DIR": str(state_dir),
+           "HOME": sandbox, "USERPROFILE": sandbox}
     env.pop("ENGRAPHY_TOKEN", None)
     if url:
         env["ENGRAPHY_URL"] = url
@@ -372,3 +398,51 @@ def test_every_input_exits_zero(tmp_path, args, stdin):
     # The one rule the hooks have: they can degrade, they cannot fail a session.
     done = _run(args, stdin, tmp_path / "state")
     assert done.returncode == 0
+
+
+# ------------------------------------------------- the server that goes quiet
+
+class _SlowHandler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers["Content-Length"] or 0))
+        # Long enough that the client's budget is what ends the call, short
+        # enough that a daemon thread holding it never delays the suite.
+        time.sleep(10)
+
+
+@pytest.fixture
+def black_hole():
+    """Accepts the connection, then answers nothing: a sleeping laptop, or a
+    tunnel that dropped. This is the case a per-call timeout alone fails."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _SlowHandler)
+    server.daemon_threads = True  # teardown never waits on a sleeping handler
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}/mcp/"
+    server.shutdown()
+    server.server_close()
+
+
+def test_a_silent_server_still_leaves_the_session_its_contract(black_hole, tmp_path, checkout):
+    started = time.monotonic()
+    done = _run(["session-start"], {"cwd": str(checkout), "session_id": "s7"},
+                tmp_path / "state", black_hole)
+    elapsed = time.monotonic() - started
+    assert done.returncode == 0
+    # Inside the hook timeout the settings snippet sets, so the harness does
+    # not kill this before it says anything.
+    assert elapsed < 10, elapsed
+    context = _context(done)
+    assert "unreachable" in context
+    assert "`briefing(" in context
+
+
+def test_the_client_stops_once_its_budget_is_spent(black_hole):
+    client = client_mod.Client(black_hole, {}, timeout=1, budget=1.5)
+    started = time.monotonic()
+    assert client.initialize() is False
+    assert client.call("scope_list") is None
+    assert client.call("briefing", {"scope": "code-x"}) is None
+    assert time.monotonic() - started < 4
