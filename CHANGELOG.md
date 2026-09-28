@@ -13,10 +13,12 @@
 - [skills/coding-memory-protocol.md](skills/coding-memory-protocol.md): when an
   agent recalls during code work, when it writes, where each memory belongs,
   and how a parked write is finished in the same turn.
-- [agent/](agent/): the standing instruction block a coding agent loads, and
-  Claude Code hooks that state the same contract at session start and on the
-  first request of a session. The hooks use the standard library only, make no
-  network call, and exit 0 on every path.
+- [agent/](agent/): the standing instruction block a coding agent loads, with
+  a ready-to-use VS Code instructions file
+  (`agent/copilot/engraphy-memory.instructions.md`, `applyTo: '**'`) carrying
+  the same body, and Claude Code hooks that state the same contract at session
+  start and on the first request of a session. The hooks use the standard
+  library only, make no network call, and exit 0 on every path.
 - [docs/08-memory-in-your-coding-agent.md](docs/08-memory-in-your-coding-agent.md):
   installing all of it in GitHub Copilot or Claude Code, including the
   user-level files that apply to every repository, and four checks that

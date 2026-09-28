@@ -4,13 +4,18 @@ This guide puts Engraphy into the loop of real work: the agent recalls what
 governs a piece of code before it changes it, and records what you tell it at
 the moment you tell it.
 
-Three pieces do that, and they are independent enough to install in any order:
+Sections 3 and 4 are the two harnesses, and they are independent: install the
+one you use, or both. Copilot runs no hooks, so there the instructions file and
+the tool descriptions carry the protocol between them. Claude Code adds hooks,
+which perform the session-start half rather than asking for it.
+
+Three pieces do the work:
 
 | Piece | What it does |
 |---|---|
 | The [dev pack](../packs/dev/pack.yaml) | Gives the space the vocabulary of code work: `component`, `convention`, `anti_pattern`, `boundary`, `recurring_bug`, `stakeholder`, `preference`, `decision`, `note`, and a briefing that opens with the off-limits areas and the hard rules. |
 | The [instruction block](../agent/coding-agent-instructions.md) | The standing text your agent loads every session: resolve the scope, brief before the first edit, search before touching new code, write on the trigger, finish the write in the same turn. |
-| The [Claude Code hooks](../agent/claude-code/) | Inject the same contract at session start and on the first request, so it holds even in a session that loaded no instructions file. |
+| The [Claude Code hooks](../agent/claude-code/) | Inject the same contract at session start and on the first request, so it holds even in a session that loaded no instructions file. Claude Code only. |
 
 Everything here assumes the server is already reachable from the machine you
 work on and registered with your agent. See [02-setup.md](02-setup.md) for the
@@ -57,52 +62,92 @@ preferences that follow you between repositories, including how you want code
 commented, belong in your personal scope, which is ambient and therefore
 already in play on every read.
 
-## 3. Install the instruction block
+## 3. Copilot in VS Code (work)
 
-Copy the text between the `BEGIN ENGRAPHY INSTRUCTIONS` and `END ENGRAPHY
-INSTRUCTIONS` markers in
-[agent/coding-agent-instructions.md](../agent/coding-agent-instructions.md)
-into the file your agent loads. Replace `code-<repo>` with the scope you
-created if you want it named outright.
+Copilot runs no hooks, so two levers carry the whole protocol: the instructions
+file, and the tool descriptions the server publishes. The pack supplies the
+second one the moment it is applied, and this step installs the first.
 
-### GitHub Copilot in VS Code
+### The file to create
 
-Copilot has no hooks, so the instruction block is what carries the protocol,
-and it is the piece to install first. Where it goes depends on how widely you
-want it to apply:
+`agent/copilot/engraphy-memory.instructions.md` in this repository is the file,
+ready to use. It carries the frontmatter Copilot reads:
 
-| Where | How | Use it when |
-|---|---|---|
-| Every repository you open, personal | Command Palette, **Chat: New Instructions File**, saved as a **user** instructions file, with `applyTo: '**'` in its frontmatter | You work in repositories you do not own, or you want memory on everywhere without committing anything. It is stored in your VS Code profile and roams with Settings Sync. |
-| One repository, shared | `.github/copilot-instructions.md` | The team shares the memory space and wants the protocol in the repository. |
-| One repository, any agent | `AGENTS.md` | Several agents work on the repository; Copilot and other harnesses read this file. |
-| Part of a repository | `.github/instructions/engraphy-memory.instructions.md`, with an `applyTo` glob | You want the protocol on one area of the tree. |
-| Copilot Agent Host sessions | `~/.copilot/instructions` | You use Agent Host, whose user instructions live outside VS Code's profile storage. |
+```yaml
+---
+name: Engraphy memory
+description: Recall what governs this code before changing it, and record what the user states, as they state it.
+applyTo: '**'
+---
+```
 
-The user instructions file is the one to reach for on a work machine: it
-applies to every repository you open, and nothing is added to your employer's
-repository. VS Code's own reference is
+`applyTo: '**'` is what makes it always-on rather than attached to one part of
+the tree.
+
+**For every repository you open, without committing anything** (the one to use
+on a work machine):
+
+1. Command Palette, **Chat: New Instructions File**, and choose the **user**
+   location rather than the workspace one. VS Code stores it in your profile,
+   and Settings Sync roams it to your other machines.
+2. Paste the contents of `agent/copilot/engraphy-memory.instructions.md` over
+   the new file, keeping the frontmatter.
+3. Name the scope outright if you like: replace `code-<repo>` in the Scope
+   section with the scope you created in step 2.
+
+**For one repository, shared with the team**, put the same body in
+`.github/copilot-instructions.md` (no frontmatter needed there), and check that
+`github.copilot.chat.codeGeneration.useInstructionFiles` is enabled, which is
+what makes VS Code discover that file. `.github/instructions/engraphy-memory.instructions.md`
+takes the file as it stands, frontmatter included, and `AGENTS.md` is the
+cross-agent equivalent. If you use Copilot Agent Host, its user instructions
+live in `~/.copilot/instructions` rather than the VS Code profile.
+
+### Register the server
+
+Engraphy must be registered as an MCP server for the editor: `.vscode/mcp.json`
+for one workspace, or your user `mcp.json`. Register it under the name
+`engraphy`, because the instructions file names the server. Use the token from
+step 1.
+
+### Confirm both levers are live
+
+Start a new chat, then:
+
+- Ask "what memory tools do you have?" The reply should list `briefing`,
+  `search`, `write` and the rest, and their descriptions carry the protocol
+  even on their own.
+- Send any request, then expand **References** on the response. The
+  instructions file should be listed there. If it is not, the file is in the
+  wrong location, or `useInstructionFiles` is off.
+
+VS Code's own reference is
 [Custom instructions](https://code.visualstudio.com/docs/copilot/customization/custom-instructions).
 
-Confirm Engraphy is registered as an MCP server for the editor (`.vscode/mcp.json`
-for one workspace, or your user `mcp.json`), then start a new chat: the tools
-appear as `briefing`, `search`, `write` and the rest.
+## 4. Claude Code (home)
 
-### Claude Code
+Two files, and the second one does automatically what Copilot does by
+instruction.
+
+### The instructions
+
+Paste the text between the `BEGIN ENGRAPHY INSTRUCTIONS` and `END ENGRAPHY
+INSTRUCTIONS` markers in
+[agent/coding-agent-instructions.md](../agent/coding-agent-instructions.md)
+into:
 
 | Where | File |
 |---|---|
 | Every repository | `~/.claude/CLAUDE.md` |
 | One repository | `CLAUDE.md` at the repository root |
 
-The same text works in both. On a work machine, use `~/.claude/CLAUDE.md` for
-the same reason as above.
+### The hooks
 
-## 4. Add the hooks (Claude Code)
-
-The hooks state the contract at session start, and hand the agent its hint on
-the first request of the session. They make no network call and need no token,
-so they cannot stall a session or leak a credential, and every path exits 0.
+The hooks state the contract at session start, and hand the agent the first
+request of the session as its briefing hint, so the recall half happens whether
+or not the instructions file was read. They make no network call and need no
+token, so they cannot stall a session or leak a credential, and every path
+exits 0.
 
 1. Open `agent/claude-code/settings-snippet.json`.
 2. Merge its `hooks` block into `~/.claude/settings.json`, or into
@@ -110,12 +155,11 @@ so they cannot stall a session or leak a credential, and every path exits 0.
 3. Replace `<ENGRAPHY>` with the path to this checkout, for example
    `C:/Users/devon/engraphy` or `/Users/devon/engraphy`. On macOS and Linux,
    change `python` to `python3` in both commands.
-4. Start a new session. The first message of a session now carries the scope
-   and the pre-work contract.
+4. Start a new session. Its first message now carries the scope and the
+   pre-work contract.
 
-A session where the hooks are absent still has the instruction block, and a
-session where the instructions file is absent still has the hooks. Install both
-and the protocol survives either being missed.
+`/memory` lists the instruction files in play, and the hook's context appears
+at the top of a new session.
 
 ## 5. Check that it works
 
@@ -135,9 +179,11 @@ Four checks, in a fresh session in a repository you have created a scope for:
    I know before touching the payment client?" The briefing and one search
    should return what you told it.
 
-If the second check does not happen, confirm the instruction block is loaded:
-in Copilot, the instructions file is listed in the chat's references; in Claude
-Code, `/memory` shows the files in play.
+If the second check does not happen, confirm the instructions really are
+loaded: in Copilot, expand **References** on the response and look for the
+instructions file; in Claude Code, run `/memory`. If they are loaded and the
+write still does not happen, check that the space is on the dev pack, because
+the tool descriptions a space publishes come from its pack.
 
 ## What goes where
 

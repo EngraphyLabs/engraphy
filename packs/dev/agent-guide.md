@@ -137,4 +137,4 @@ user's `personal-<principal>` scope is ambient, so it is unioned into every
 read, and it holds the preferences that follow them between repositories. See
 [skills/scopes-and-visibility.md](../../skills/scopes-and-visibility.md), and
 [docs/08-memory-in-your-coding-agent.md](../../docs/08-memory-in-your-coding-agent.md)
-for setting them up.
+for setting them up, in Copilot or in Claude Code.

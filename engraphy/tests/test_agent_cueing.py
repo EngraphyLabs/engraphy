@@ -25,6 +25,7 @@ from engraphy.server.tool_registry import _BASE_DESCRIPTIONS
 REPO_ROOT = pathlib.Path(__file__).parents[2]
 SKILL = REPO_ROOT / "skills" / "coding-memory-protocol.md"
 INSTRUCTIONS = REPO_ROOT / "agent" / "coding-agent-instructions.md"
+COPILOT = REPO_ROOT / "agent" / "copilot" / "engraphy-memory.instructions.md"
 DEV_PACK = REPO_ROOT / "packs" / "dev" / "pack.yaml"
 WIRE_PENDING = REPO_ROOT / "engraphy" / "tests" / "fixtures" / "wire" / "write_needs_confirmation.json"
 
@@ -34,6 +35,7 @@ TRIGGER_HEADER = "| When this happens | What to write |"
 AUTHORED_FILES = [
     SKILL,
     INSTRUCTIONS,
+    COPILOT,
     DEV_PACK,
     REPO_ROOT / "packs" / "dev" / "agent-guide.md",
     REPO_ROOT / "docs" / "08-memory-in-your-coding-agent.md",
@@ -82,6 +84,31 @@ def test_the_instruction_block_names_the_vocabulary():
         assert f"`{node_type}`" in text, f"the instruction block never mentions {node_type}"
     for tool in ("briefing", "search", "write", "resolve_duplicate", "pending_list", "supersede"):
         assert f"`{tool}`" in text
+
+
+def test_the_copilot_file_carries_the_block_verbatim():
+    """Copilot runs no hooks, so this file is one of the two levers there. It
+    is the block plus the frontmatter VS Code reads, and nothing else: a body
+    that drifts from the authored block is a second protocol."""
+    text = COPILOT.read_text(encoding="utf-8")
+    front, _, body = text.partition("---\n\n")
+    assert front.startswith("---\n")
+    for key in ("name:", "description:", "applyTo: '**'"):
+        assert key in front, f"the Copilot frontmatter is missing {key}"
+    block = INSTRUCTIONS.read_text(encoding="utf-8").split(
+        "<!-- BEGIN ENGRAPHY INSTRUCTIONS -->", 1)[1].split(
+        "<!-- END ENGRAPHY INSTRUCTIONS -->", 1)[0].strip("\n")
+    assert body.strip("\n") == block
+
+
+def test_both_copies_cue_the_two_moments_explicitly():
+    # The no-hook harness has nothing else to lean on: the recall moment and
+    # the write moment have to be stated, not implied.
+    for path in (INSTRUCTIONS, COPILOT):
+        text = path.read_text(encoding="utf-8")
+        assert "At the start of a ticket, bug fix or review" in text
+        assert "Before you reply, two checks" in text
+        assert "`pending_list`" in text and "`briefing(scope=" in text
 
 
 def test_the_instruction_block_is_delimited_for_pasting():
