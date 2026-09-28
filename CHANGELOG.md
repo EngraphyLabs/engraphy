@@ -16,9 +16,12 @@
 - [agent/](agent/): the standing instruction block a coding agent loads, with
   a ready-to-use VS Code instructions file
   (`agent/copilot/engraphy-memory.instructions.md`, `applyTo: '**'`) carrying
-  the same body, and Claude Code hooks that state the same contract at session
-  start and on the first request of a session. The hooks use the standard
-  library only, make no network call, and exit 0 on every path.
+  the same body, and Claude Code hooks that perform the session-start recall:
+  they resolve the checkout's scope against `scope_list`, fetch the briefing
+  and any parked writes, and inject them fenced, then fetch the hinted
+  briefing on the session's first request. The hooks read only, read the
+  credential from the harness's own registration, use the standard library
+  alone, and exit 0 on every path.
 - [docs/08-memory-in-your-coding-agent.md](docs/08-memory-in-your-coding-agent.md):
   installing all of it in GitHub Copilot or Claude Code, including the
   user-level files that apply to every repository, and four checks that

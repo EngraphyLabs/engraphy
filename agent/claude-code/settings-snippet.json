@@ -4,15 +4,19 @@
     "~/.claude/settings.json (every project) or .claude/settings.json (this",
     "project), and replace <ENGRAPHY> with the path to your checkout.",
     "",
-    "SessionStart names the scope and states the pre-work contract. It fires",
-    "before any user message exists, so the hinted half of the briefing runs on",
-    "UserPromptSubmit instead, once per session, where the first request is",
-    "available to use as the hint.",
+    "SessionStart resolves this checkout's scope against scope_list, then",
+    "injects the briefing and anything parked. It fires before any user message",
+    "exists, so the hinted half of the briefing runs on UserPromptSubmit",
+    "instead, once per session, where the first request is available as the",
+    "hint.",
     "",
-    "The hooks inject context and make no network call, so they need no token",
-    "and cannot stall a session. Both exit 0 on every path; the timeouts are a",
-    "second guard, and a hook that exceeds one is killed with the session",
-    "carrying on."
+    "The hooks read only, and they read as you: the credential comes from this",
+    "machine's own engraphy registration in ~/.claude.json, so there is no",
+    "second copy of the token. ENGRAPHY_URL and ENGRAPHY_TOKEN override it.",
+    "",
+    "Both exit 0 on every path, and a server that is down degrades the session",
+    "to the text-only contract. The timeouts are the outer guard: a hook that",
+    "exceeds one is killed, and the session carries on."
   ],
   "hooks": {
     "SessionStart": [
@@ -21,7 +25,7 @@
           {
             "type": "command",
             "command": "python \"<ENGRAPHY>/agent/claude-code/hooks/engraphy_cue.py\" session-start",
-            "timeout": 5
+            "timeout": 10
           }
         ]
       }
@@ -32,7 +36,7 @@
           {
             "type": "command",
             "command": "python \"<ENGRAPHY>/agent/claude-code/hooks/engraphy_cue.py\" prompt",
-            "timeout": 5
+            "timeout": 10
           }
         ]
       }

@@ -7,7 +7,8 @@ the moment you tell it.
 Sections 3 and 4 are the two harnesses, and they are independent: install the
 one you use, or both. Copilot runs no hooks, so there the instructions file and
 the tool descriptions carry the protocol between them. Claude Code adds hooks,
-which perform the session-start half rather than asking for it.
+which fetch the session-start briefing themselves rather than asking the
+agent to.
 
 Three pieces do the work:
 
@@ -15,7 +16,7 @@ Three pieces do the work:
 |---|---|
 | The [dev pack](../packs/dev/pack.yaml) | Gives the space the vocabulary of code work: `component`, `convention`, `anti_pattern`, `boundary`, `recurring_bug`, `stakeholder`, `preference`, `decision`, `note`, and a briefing that opens with the off-limits areas and the hard rules. |
 | The [instruction block](../agent/coding-agent-instructions.md) | The standing text your agent loads every session: resolve the scope, brief before the first edit, search before touching new code, write on the trigger, finish the write in the same turn. |
-| The [Claude Code hooks](../agent/claude-code/) | Inject the same contract at session start and on the first request, so it holds even in a session that loaded no instructions file. Claude Code only. |
+| The [Claude Code hooks](../agent/claude-code/) | Do the session-start recall themselves: resolve the scope, fetch the briefing and anything parked, and inject it. Claude Code only. |
 
 Everything here assumes the server is already reachable from the machine you
 work on and registered with your agent. See [02-setup.md](02-setup.md) for the
@@ -88,11 +89,16 @@ the tree.
 on a work machine):
 
 1. Command Palette, **Chat: New Instructions File**, and choose the **user**
-   location rather than the workspace one. VS Code stores it in your profile,
-   and Settings Sync roams it to your other machines.
-2. Paste the contents of `agent/copilot/engraphy-memory.instructions.md` over
+   location rather than the workspace one. Name it `engraphy-memory`, which
+   gives you `engraphy-memory.instructions.md`; the `.instructions.md` suffix
+   is what marks the file as instructions.
+2. VS Code creates it in your profile folder (under `%APPDATA%\Code\User` on
+   Windows, `~/Library/Application Support/Code/User` on macOS) and opens it,
+   so its tab shows you the path. Settings Sync roams it to your other
+   machines.
+3. Paste the contents of `agent/copilot/engraphy-memory.instructions.md` over
    the new file, keeping the frontmatter.
-3. Name the scope outright if you like: replace `code-<repo>` in the Scope
+4. Name the scope outright if you like: replace `code-<repo>` in the Scope
    section with the scope you created in step 2.
 
 **For one repository, shared with the team**, put the same body in
@@ -112,14 +118,20 @@ step 1.
 
 ### Confirm both levers are live
 
+VS Code asks you to confirm a tool call the first time it runs one. Approve
+the memory tools for the workspace when it offers, so `briefing`, `search` and
+`write` do not need a click each time: a prompt on every recall is the friction
+that ends with memory switched off.
+
 Start a new chat, then:
 
 - Ask "what memory tools do you have?" The reply should list `briefing`,
   `search`, `write` and the rest, and their descriptions carry the protocol
   even on their own.
 - Send any request, then expand **References** on the response. The
-  instructions file should be listed there. If it is not, the file is in the
-  wrong location, or `useInstructionFiles` is off.
+  instructions file should be listed there. If it is not, check its location
+  and its `applyTo`, and for the workspace file, that
+  `github.copilot.chat.codeGeneration.useInstructionFiles` is on.
 
 VS Code's own reference is
 [Custom instructions](https://code.visualstudio.com/docs/copilot/customization/custom-instructions).
@@ -143,11 +155,17 @@ into:
 
 ### The hooks
 
-The hooks state the contract at session start, and hand the agent the first
-request of the session as its briefing hint, so the recall half happens whether
-or not the instructions file was read. They make no network call and need no
-token, so they cannot stall a session or leak a credential, and every path
-exits 0.
+The hooks do the recall themselves. At session start, the hook resolves this
+checkout's scope against `scope_list`, fetches the briefing and anything
+parked, and injects it fenced, so the off-limits areas and the hard rules are
+in the session before the agent decides anything. On the first request of the
+session it fetches the hinted briefing and injects only what that hint added.
+
+They read as you: the credential comes from the `engraphy` registration Claude
+Code already holds in `~/.claude.json`, so there is no second copy of the
+token, and `ENGRAPHY_URL` plus `ENGRAPHY_TOKEN` override it. They only read,
+never write or resolve a memory, and every path exits 0. A server that is down
+degrades the session to the text-only contract, and says so.
 
 1. Open `agent/claude-code/settings-snippet.json`.
 2. Merge its `hooks` block into `~/.claude/settings.json`, or into
@@ -155,11 +173,18 @@ exits 0.
 3. Replace `<ENGRAPHY>` with the path to this checkout, for example
    `C:/Users/devon/engraphy` or `/Users/devon/engraphy`. On macOS and Linux,
    change `python` to `python3` in both commands.
-4. Start a new session. Its first message now carries the scope and the
-   pre-work contract.
+4. Start a new session. It now opens with this checkout's scope, the
+   briefing for it, and anything parked from an earlier session.
 
 `/memory` lists the instruction files in play, and the hook's context appears
 at the top of a new session.
+
+**Which space the home agent points at matters.** The hooks and the block name
+types from the dev pack, so a session whose `engraphy` registration points at a
+space on another pack can read memory but cannot write an `anti_pattern` or a
+`boundary` there: the write is refused as an unknown type. Either point the
+home agent at a space on the dev pack, or run `pack upgrade` on the space it
+already uses, knowing it replaces that space's briefing and tool descriptions.
 
 ## 5. Check that it works
 
