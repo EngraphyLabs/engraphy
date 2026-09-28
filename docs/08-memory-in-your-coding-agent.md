@@ -135,7 +135,7 @@ Four checks, in a fresh session in a repository you have created a scope for:
    I know before touching the payment client?" The briefing and one search
    should return what you told it.
 
-If step 2 does not happen, check that the instruction block really is loaded:
+If the second check does not happen, confirm the instruction block is loaded:
 in Copilot, the instructions file is listed in the chat's references; in Claude
 Code, `/memory` shows the files in play.
 
