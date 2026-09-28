@@ -47,7 +47,8 @@ has not started yet is a `preference` in the personal scope. A rule that only
 makes sense inside this codebase belongs in the repository scope.
 
 Resolve the scope at the start of a task: call `scope_list` and take the scope
-whose id matches this repository. If none matches, ask once ("No memory scope
+whose id or `hints` name this repository, whatever it is called. An existing
+scope always wins over a new one. If none matches, ask once ("No memory scope
 for `<repo>` yet, create `code-<repo>`?") and create it on confirmation with
 `scope_create` (it needs `confirm: true` and a description of what it governs).
 Never guess a scope, and never fall back to `scope='all'`: a read of everything

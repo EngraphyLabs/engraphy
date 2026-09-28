@@ -59,9 +59,12 @@ def test_no_usable_name_yields_no_scope(tmp_path, monkeypatch):
     assert cue.scope_for_repo("", "/") is None
 
 
-def test_session_start_context_names_the_scope_and_the_three_steps():
+def test_session_start_context_proposes_the_scope_and_names_the_three_steps():
     context = cue.session_start_context("code-billing-api")
-    assert "code-billing-api" in context
+    # Proposed, not asserted: the hook reads the checkout, and scope_list is
+    # what knows the space, so an existing scope can still win.
+    assert "likely `code-billing-api`" in context
+    assert "scope_list" in context
     assert "pending_list" in context
     assert "briefing" in context and "hint" in context
     assert "search" in context

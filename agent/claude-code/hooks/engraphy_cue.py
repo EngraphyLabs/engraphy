@@ -97,12 +97,20 @@ def repo_url(cwd: str) -> str | None:
 
 
 def session_start_context(scope: str | None) -> str:
-    """The pre-work contract, named scope and all."""
-    where = f"`{scope}`" if scope else "the scope `scope_list` gives for this repository"
+    """The pre-work contract, with the scope this checkout probably uses.
+
+    Probably, not certainly: the hook reads the checkout, not the space. A
+    space may already hold a scope for this repository under another id, and an
+    existing scope always beats a new one, so the context proposes and
+    `scope_list` decides.
+    """
+    where = (f"likely `{scope}`" if scope
+             else "whichever scope `scope_list` gives for this repository")
     lines = [
         "Engraphy memory is available on this machine, as the `engraphy` MCP server.",
-        (f"This checkout's memory scope is {where}, and the user's personal scope is "
-         "ambient, so a read of one returns both."),
+        (f"This checkout's memory scope is {where}. Confirm it with `scope_list`, "
+         "preferring a scope that already exists, by id or by its hints. The user's "
+         "personal scope is ambient, so a read of any scope returns it too."),
         "",
         "Before your first edit in this session:",
         ("1. Call `pending_list`. Anything it returns is an earlier write that was "

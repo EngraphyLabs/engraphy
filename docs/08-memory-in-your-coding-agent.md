@@ -16,20 +16,31 @@ Everything here assumes the server is already reachable from the machine you
 work on and registered with your agent. See [02-setup.md](02-setup.md) for the
 server, and the extension walkthrough for registering it with an editor.
 
-## 1. Apply the dev pack
+## 1. Give work its own space, on the dev pack
 
-A pack is per space. Apply the dev pack to the space your work agent connects
-to, from a checkout of this repository or the admin image:
+A pack is the schema of a whole space, and `pack apply` runs once per space, so
+work memory goes in a space of its own. That also keeps work and personal
+memory apart when you search.
+
+From a checkout of this repository, or the admin image:
 
 ```bash
+engraphy-admin space create --id work --display-name "Work" --principal devon
 engraphy-admin pack apply packs/dev/pack.yaml --space work
+engraphy-admin token create --space work --principal devon --client-name "vs code"
 ```
 
-Use a space of its own for work memory. A pack defines the whole registry of a
-space, so applying `dev` where `conversational` or `starter` is in use replaces
-the briefing and the tool descriptions, and `pack upgrade` refuses to drop a
-node type that has memories in it. Keeping work in its own space also keeps the
-two bodies of memory apart when you search.
+`space create` also creates `personal-devon` in that space, as an ambient
+scope: the engine unions an ambient scope into every read of another scope.
+`token create` prints the bearer token once. Register it with your editor under
+the server name `engraphy`, which is the name the instruction block and the
+hooks both use.
+
+To put the dev pack into a space that already has a pack, use
+`engraphy-admin pack upgrade packs/dev/pack.yaml --space <space>` instead. It
+adds what is new, it replaces that space's briefing and tool descriptions with
+the dev pack's, and it refuses to drop a node type that still holds memories.
+Read what it reports before you rely on the result.
 
 ## 2. Create the scope for a repository
 
@@ -43,14 +54,8 @@ want remembered. The quickest route is to ask your agent, which has the
 
 The repository scope holds what is true of that codebase alone. The
 preferences that follow you between repositories, including how you want code
-commented, belong in your personal scope instead.
-
-A principal created with the admin CLI (`space create`, or `principal add`)
-already has `personal-<principal>`, and it is ambient, which means the engine
-unions it into every read of another scope. Confirm it is there with
-`scope_list`; a principal added over MCP with `admin_member_add` has no
-personal scope, and `engraphy-admin principal add --space work --id <you>
---display-name "<You>"` creates one.
+commented, belong in your personal scope, which is ambient and therefore
+already in play on every read.
 
 ## 3. Install the instruction block
 
@@ -63,18 +68,20 @@ created if you want it named outright.
 ### GitHub Copilot in VS Code
 
 Copilot has no hooks, so the instruction block is what carries the protocol,
-and it is the piece to install first.
+and it is the piece to install first. Where it goes depends on how widely you
+want it to apply:
 
-| Where | File | Use it when |
+| Where | How | Use it when |
 |---|---|---|
-| Every repository, personal | `~/.copilot/copilot-instructions.md` | You work in repositories you do not own, or you want memory on everywhere without committing anything. |
+| Every repository you open, personal | Command Palette, **Chat: New Instructions File**, saved as a **user** instructions file, with `applyTo: '**'` in its frontmatter | You work in repositories you do not own, or you want memory on everywhere without committing anything. It is stored in your VS Code profile and roams with Settings Sync. |
 | One repository, shared | `.github/copilot-instructions.md` | The team shares the memory space and wants the protocol in the repository. |
-| One repository, any agent | `AGENTS.md` | The repository is worked on by several agents; Copilot and other harnesses read this file. |
-| Selected paths | `.github/instructions/engraphy-memory.instructions.md`, with `applyTo: '**'` in its frontmatter | You want the protocol scoped to part of the tree. |
+| One repository, any agent | `AGENTS.md` | Several agents work on the repository; Copilot and other harnesses read this file. |
+| Part of a repository | `.github/instructions/engraphy-memory.instructions.md`, with an `applyTo` glob | You want the protocol on one area of the tree. |
+| Copilot Agent Host sessions | `~/.copilot/instructions` | You use Agent Host, whose user instructions live outside VS Code's profile storage. |
 
-The user-level file is the one to reach for on a work machine: it applies to
-every repository you open, and nothing is added to your employer's repository.
-VS Code's own reference for these files is
+The user instructions file is the one to reach for on a work machine: it
+applies to every repository you open, and nothing is added to your employer's
+repository. VS Code's own reference is
 [Custom instructions](https://code.visualstudio.com/docs/copilot/customization/custom-instructions).
 
 Confirm Engraphy is registered as an MCP server for the editor (`.vscode/mcp.json`
@@ -101,7 +108,8 @@ so they cannot stall a session or leak a credential, and every path exits 0.
 2. Merge its `hooks` block into `~/.claude/settings.json`, or into
    `.claude/settings.json` for one project.
 3. Replace `<ENGRAPHY>` with the path to this checkout, for example
-   `C:/Users/devon/engraphy` or `/Users/devon/engraphy`.
+   `C:/Users/devon/engraphy` or `/Users/devon/engraphy`. On macOS and Linux,
+   change `python` to `python3` in both commands.
 4. Start a new session. The first message of a session now carries the scope
    and the pre-work contract.
 

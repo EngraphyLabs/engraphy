@@ -1,10 +1,11 @@
 # Engraphy memory: standing instructions for a coding agent
 
-Paste this into the file your agent always loads. For GitHub Copilot that is
-`.github/copilot-instructions.md` in the repository, or your user-level
-instructions file; for Claude Code it is `CLAUDE.md`, or `~/.claude/CLAUDE.md`
-for every repository at once. Installation, including the version that needs no
-file in a repository you do not own, is in
+Paste this into the file your agent always loads. For GitHub Copilot that is a
+user instructions file with `applyTo: '**'` (Command Palette, Chat: New
+Instructions File), or `.github/copilot-instructions.md` in the repository; for
+Claude Code it is `CLAUDE.md`, or `~/.claude/CLAUDE.md` for every repository at
+once. Installation, including the routes that need no file in a repository you
+do not own, is in
 [docs/08-memory-in-your-coding-agent.md](../docs/08-memory-in-your-coding-agent.md).
 
 The canonical text is [skills/coding-memory-protocol.md](../skills/coding-memory-protocol.md);
@@ -29,9 +30,11 @@ already told you. Using it is part of doing the work correctly, not an extra.
 
 ### Scope
 
-- The repository scope is `code-<repo>`. Resolve it with `scope_list` at the
-  start of a task. If there is none for this repository, ask once and create it
-  with `scope_create` (`confirm: true`, plus a description).
+- Resolve the scope with `scope_list` at the start of a task, and prefer a
+  scope that already exists: one whose id or `hints` name this repository. New
+  repository scopes are named `code-<repo>`, so that is the likely id, and it
+  is the name to propose when there is none. If nothing matches, ask once and
+  create it with `scope_create` (`confirm: true`, plus a description).
 - The user's personal scope, `personal-<principal>`, is ambient: it is included
   in every read automatically, and it holds their cross-repository coding and
   comment preferences.

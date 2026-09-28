@@ -58,9 +58,10 @@ MERGED_INSTRUCTION = (
 #: outcome where the agent's work is not yet stored, and an agent that reads
 #: "pending" as "done" loses the memory when the 24h TTL sweeps it. So the
 #: string states the consequence, the deadline and the two resolutions, not
-#: only the name of the call. Byte-pinned by 07's example and
-#: fixtures/wire/write_needs_confirmation.json -- do not reword without
-#: amending both.
+#: only the name of the call. Byte-pinned by
+#: fixtures/wire/write_needs_confirmation.json (test_agent_cueing asserts the
+#: two are the same string), and abbreviated in 07's example envelope -- do not
+#: reword without amending both.
 PENDING_INSTRUCTION = (
     "Nothing is saved yet. Call resolve_duplicate now, in this same turn, with "
     "resolution 'distinct' (this write makes a different claim from the candidate) "

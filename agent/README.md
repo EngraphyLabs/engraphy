@@ -4,7 +4,7 @@ What a coding agent loads so that memory is part of how it works.
 
 | File | What it is |
 |---|---|
-| [coding-agent-instructions.md](coding-agent-instructions.md) | The standing instruction block. Paste the delimited section into `~/.copilot/copilot-instructions.md`, `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md` or `~/.claude/CLAUDE.md`. |
+| [coding-agent-instructions.md](coding-agent-instructions.md) | The standing instruction block. Paste the delimited section into a Copilot user instructions file, `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md` or `~/.claude/CLAUDE.md`. |
 | [claude-code/settings-snippet.json](claude-code/settings-snippet.json) | Hook wiring for Claude Code: session start, and the first request of a session. |
 | [claude-code/hooks/engraphy_cue.py](claude-code/hooks/engraphy_cue.py) | The hook itself. Standard library only, no network, exits 0 on every path. |
 

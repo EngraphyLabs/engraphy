@@ -8,7 +8,8 @@
   approval first), `recurring_bug`, `stakeholder`, `preference`, `decision` and
   `note`, with `applies_to` and `owns` edges and a briefing that opens with the
   off-limits areas and the hard rules. `packs/dev/agent-guide.md` is its
-  vocabulary reference.
+  vocabulary reference, and every pack under `packs/` ships in the wheel
+  alongside the schema.
 - [skills/coding-memory-protocol.md](skills/coding-memory-protocol.md): when an
   agent recalls during code work, when it writes, where each memory belongs,
   and how a parked write is finished in the same turn.

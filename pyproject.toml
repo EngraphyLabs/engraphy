@@ -79,7 +79,7 @@ engraphy-admin = "engraphy.admin.cli:app"
 version = {attr = "engraphy.__version__"}
 
 [tool.setuptools.packages.find]
-# `packs*` ships the pack JSON Schema + starter pack (see packs/__init__.py).
+# `packs*` ships the pack JSON Schema + every shipped pack (see packs/__init__.py).
 include = ["engraphy*", "packs*", "bench*"]
 
 # Runtime data files that code locates RELATIVE TO ITS OWN MODULE. Without
@@ -93,7 +93,7 @@ include = ["engraphy*", "packs*", "bench*"]
 #   engraphy/admin/packs.py   -> parents[2]/packs/schema.json -> packs/schema.json
 [tool.setuptools.package-data]
 "engraphy.db" = ["migrations/*.sql"]
-"packs" = ["schema.json", "starter/*.yaml"]
+"packs" = ["schema.json", "*/*.yaml"]
 
 [tool.ruff]
 line-length = 100
