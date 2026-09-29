@@ -9,6 +9,14 @@ memory, a CRM, a reading log, a research notebook).
 A pack is a YAML (or JSON) file validated against `packs/schema.json`. You
 `engraphy-admin pack validate` it, then `engraphy-admin pack apply` it into a space.
 
+Three packs ship with the engine, each with an agent guide beside it:
+
+| Pack | For |
+|---|---|
+| [`packs/starter`](../packs/starter/pack.yaml) | The default for a new space: notes, people, preferences, commitments, project pointers. |
+| [`packs/conversational`](../packs/conversational/pack.yaml) | Personal memory across many conversations: people, things, facts, events, opinions, decisions. |
+| [`packs/dev`](../packs/dev/pack.yaml) | Code work: components, conventions, anti-patterns, off-limits areas, recurring bugs, stakeholders, decisions. See [Memory in your coding agent](08-memory-in-your-coding-agent.md). |
+
 ## Anatomy of a pack
 
 | Key | Required | What it declares |

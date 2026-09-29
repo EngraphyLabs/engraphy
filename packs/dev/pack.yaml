@@ -1,0 +1,132 @@
+# dev pack: the vocabulary a coding agent needs while it works in a codebase.
+#
+# The chain is: a `component` names an area of code, and a `convention`,
+# `anti_pattern`, `boundary` or `recurring_bug` attaches to it with
+# `applies_to`. That is what makes "what do I need to know before I touch
+# src/auth?" answerable by one search, and what makes a `stakeholder` who
+# `owns` that area findable from the same place.
+#
+# Descriptions in this file are read by the agent at write time (they appear in
+# the validation error when a type or attr is wrong), so each one says when to
+# use the type, not merely what it is. The agent-guide beside this file is the
+# long form; packs/dev/agent-guide.md.
+pack: dev
+version: 1
+pack_format: 2
+
+node_types:
+  component:
+    description: "An area of code: a service, package, module, directory or file glob. The anchor every other memory attaches to with applies_to. Write one the first time an area earns a memory, then link to it."
+    attrs:
+      required: {path: {type: string, searchable: true}}
+      optional:
+        repo: {type: string, searchable: true}
+        language: {type: string, searchable: true}
+      closed: true
+  convention:
+    description: "How this codebase does something, that a change is expected to follow: a pattern, an idiom, a required helper, a naming or layout rule. strength=hard means a change that breaks it is wrong; soft means it is the default."
+    attrs:
+      required: {strength: {enum: [hard, soft]}}
+      optional: {domain: {type: string, searchable: true}}
+      closed: true
+  anti_pattern:
+    description: "A way of doing something that has burned this codebase before. Say what goes wrong and what to do instead. Write one the moment the user names a mistake to avoid, and attach it to the component it applies to."
+    attrs:
+      required: {severity: {enum: [low, medium, high]}}
+      optional: {domain: {type: string, searchable: true}}
+      closed: true
+  boundary:
+    description: "Code that is off limits, or not to be changed without approval: generated files, vendored code, a frozen public interface, another team's area. rule says which, approver says whose sign-off lifts ask_first."
+    attrs:
+      required: {rule: {enum: [do_not_touch, ask_first, generated, vendored, frozen_interface]}}
+      optional: {approver: {type: string, searchable: true}}
+      closed: true
+  recurring_bug:
+    description: "A defect that keeps coming back: the symptom, the cause when it is known, and the fix that works. Write one on the second sighting, and strengthen it on every sighting after."
+    attrs:
+      required: {status: {enum: [open, mitigated, fixed]}}
+      optional:
+        last_seen: {type: date}
+        ticket: {type: string, searchable: true}
+      closed: true
+  stakeholder:
+    description: "A person whose ownership or approval matters to the work: what they manage, what they decide, how to reach them. Link them to the areas they own with owns."
+    attrs:
+      required: {role: {type: string, searchable: true}}
+      optional:
+        manages: {type: string, searchable: true}
+        contact: {type: string, searchable: true}
+      closed: true
+  preference:
+    description: "How the user wants the work done, across repositories: code style, comment style and density, test style, commit and review habits, tone. strength=hard means never override. Use domain=comments for how they want code commented."
+    attrs:
+      required: {strength: {enum: [hard, soft]}}
+      optional: {domain: {type: string, searchable: true}}
+      closed: true
+  decision:
+    description: "An engineering choice that was made, and the reasoning that decided it: a library, an approach, a rejected alternative. Write the reasoning, because the reasoning is what the next session cannot reconstruct."
+    attrs:
+      optional:
+        as_of: {type: date}
+        ticket: {type: string, searchable: true}
+      closed: true
+  note:
+    description: "A durable fact about this work that fits none of the other types: how to run something awkward, where a thing lives, a constraint discovered the hard way. Prefer a more specific type when one fits."
+    attrs: {closed: true}
+
+edge_types:
+  applies_to: {description: "This memory governs this area of code.", bidirectional: false}
+  owns:       {description: "This person owns or approves changes to this area of code.", bidirectional: false}
+  involves:   {description: "This memory concerns this person.", bidirectional: false}
+  relates_to: {description: "Weak generic association.", bidirectional: true}
+  supersedes: {description: "Replacement; the old node's status becomes superseded.", bidirectional: false}
+  same_topic: {description: "Same topic, distinct content: the write path banded these nodes as near-duplicates but kept both because each carries its own information. Attached automatically on merge; walk it to see every stored statement on a topic.", bidirectional: true}
+
+edge_rules:
+  # Everything that can govern code points at the component it governs, so one
+  # traverse from a component answers "what applies here".
+  - {type: applies_to, src: convention,    dst: component}
+  - {type: applies_to, src: anti_pattern,  dst: component}
+  - {type: applies_to, src: boundary,      dst: component}
+  - {type: applies_to, src: recurring_bug, dst: component}
+  - {type: applies_to, src: decision,      dst: component}
+  - {type: applies_to, src: note,          dst: component}
+  - {type: applies_to, src: component,     dst: component}   # a part of a larger area
+  - {type: owns,       src: stakeholder,   dst: component}
+  - {type: involves,   src: "*",           dst: stakeholder}
+  - {type: relates_to, src: "*",           dst: "*"}
+  # The merge path attaches same_topic itself, and the supersede tool inserts
+  # supersedes, so the pack has to permit both (docs/03-packs.md §Edge rules).
+  - {type: same_topic, src: "*", dst: "*"}
+  - {type: supersedes, src: "*", dst: "*"}
+
+briefing:
+  sections:
+    # What must not be touched, and the rules a change is judged against, come
+    # first and unconditionally: they are the answers the agent needs before it
+    # edits anything, and they are short enough to carry every session.
+    - {name: boundaries, type: boundary}
+    - {name: hard_conventions, type: convention, where_attr: {key: strength, equals: hard}}
+    - {name: standing_preferences, type: preference, where_attr: {key: strength, equals: hard}}
+    # What this particular task touches. Needs a hint on the call: pass the
+    # ticket text, and the paths and component names you are about to open.
+    - {name: relevant, semantic: true,
+       types: [component, convention, anti_pattern, boundary, recurring_bug,
+               decision, stakeholder, preference, note], top_k: 8}
+    - {name: open_recurring_bugs, type: recurring_bug, where_attr: {key: status, equals: open}}
+    - {name: recent_decisions, type: decision, recent: 30d}
+  footer: {inbox_pending_count: true}
+
+# A pack override REPLACES the engine's base text for that tool, so each line
+# here carries its whole contract: the moment to call it, and the follow-up the
+# call can oblige. See packs/dev/agent-guide.md and skills/coding-memory-protocol.md.
+tool_descriptions:
+  briefing: "Call this at the start of a ticket or a fix, before your first edit: it returns the off-limits areas, the hard conventions and standing preferences that judge your change, the memories relevant to your hint, the open recurring bugs, and recent decisions. Pass the ticket text plus the paths you are about to open as the hint, or the relevant section comes back empty."
+  scope_list: "List the scopes this token can read, with each one's id and hints. Call it at the start of a ticket to find this repository's scope, which is usually named code-<repo>. Prefer a scope that already exists over creating one."
+  search: "Call this before you change code in an area you have not already loaded into this session: search the repository's scope for the paths, file names and component names you are about to touch, plus the topic of the task. It returns the conventions, anti-patterns, off-limits rules, recurring bugs and decisions recorded for that area. Searching costs one call; rediscovering a recorded mistake costs a review cycle."
+  write: "Save a durable engineering fact the moment it is stated, in the same turn, before you continue: a convention, an anti-pattern to avoid, a do-not-touch area, a recurring bug, a coding or comment preference, a decision and its reasoning, or a stakeholder and what they manage. The server deduplicates, so re-telling is safe. If the result is 'needs_confirmation' the memory is NOT saved yet: call resolve_duplicate now. If the result is 'merged' but you were correcting the stored fact rather than restating it, call supersede."
+  resolve_duplicate: "Finish a parked write by deciding whether it is the same memory: 'distinct' keeps both (a different claim about the same topic is distinct), 'merge' folds it into the candidate you name (the same claim told twice). Until you call this, nothing was saved, and the parked write expires 24 hours after the write that made it."
+  pending_list: "List your parked writes: the ones a duplicate check stopped, which are not saved until you resolve them. Call it at the start of a session, and resolve anything it returns. Read-only."
+  supersede: "Replace a memory whose claim has changed: a convention that was revised, a bug that is now fixed, an owner who moved on. The old node is retired and the new one becomes current, which a plain write cannot do because the write path would absorb the correction into the stale memory."
+  scope_guide: "The routing manifest: every scope you can write to, each with a description of what it governs. Fetch it when you are unsure where a memory belongs, for example a rule that holds for one repository against a preference that holds for all of them. Read-only."
+  link: "Attach typed edges between existing nodes. Attach every convention, anti-pattern, boundary and recurring bug to the component it governs with applies_to, so one search of an area returns all of them."

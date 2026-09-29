@@ -78,7 +78,7 @@ The `instruction` field (July 2026 revision, per the dupstream contradiction fin
 {"v": 1, "outcome": "needs_confirmation", "pending_id": "…uuid…",
  "expires_at": "…+24h…",
  "candidates": [{"id": "…", "title": "…", "body": "…", "similarity": 0.87}],
- "instruction": "Call resolve_duplicate with resolution 'distinct' or 'merge'."}
+ "instruction": "Nothing is saved yet. Call resolve_duplicate now, in this same turn, with resolution 'distinct' … or 'merge' plus merge_into …"}
 ```
 
 **`search`** (`detail` parameter: `full` default | `summary`):
