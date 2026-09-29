@@ -136,5 +136,5 @@ Repository scopes are `code-<repo>` and hold what is true of that codebase. The
 user's `personal-<principal>` scope is ambient, so it is unioned into every
 read, and it holds the preferences that follow them between repositories. See
 [skills/scopes-and-visibility.md](../../skills/scopes-and-visibility.md), and
-[docs/08-memory-in-your-coding-agent.md](../../docs/08-memory-in-your-coding-agent.md)
+[docs/08-getting-agents-to-use-memory.md](../../docs/08-getting-agents-to-use-memory.md)
 for setting them up, in Copilot or in Claude Code.

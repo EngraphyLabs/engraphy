@@ -6,17 +6,20 @@ What a coding agent loads so that memory is part of how it works.
 |---|---|
 | [coding-agent-instructions.md](coding-agent-instructions.md) | The standing instruction block. Paste the delimited section into a Copilot user instructions file, `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md` or `~/.claude/CLAUDE.md`. |
 | [copilot/engraphy-memory.instructions.md](copilot/engraphy-memory.instructions.md) | The same block as a VS Code instructions file, frontmatter and all, for a Copilot user or workspace instructions file. Its body is the block above, held identical by a test. |
+| [claude-code/skills/engraphy-memory/SKILL.md](claude-code/skills/engraphy-memory/SKILL.md) | The same block as a Claude Code skill, for a skills folder rather than CLAUDE.md. Its body is the block above, held identical by a test. |
 | [claude-code/settings-snippet.json](claude-code/settings-snippet.json) | Hook wiring for Claude Code: session start, and the first request of a session. |
 | [claude-code/hooks/engraphy_cue.py](claude-code/hooks/engraphy_cue.py) | The hook itself: it resolves the scope, fetches the briefing and the parked writes, and injects them fenced. Exits 0 on every path. |
 | [claude-code/hooks/engraphy_client.py](claude-code/hooks/engraphy_client.py) | The client under it: Streamable HTTP over the standard library, reading the token from the registration the harness already holds. |
 
 Edit the block in `coding-agent-instructions.md`, then copy the text between
-its markers into `copilot/engraphy-memory.instructions.md`, under that file's
-frontmatter. `engraphy/tests/test_agent_cueing.py` holds the two identical, and
-holds the trigger table identical to the skill that authors it.
+its markers into the three files that carry it: the Copilot instructions file,
+the Claude Code skill, and the snippet in
+[docs/08-getting-agents-to-use-memory.md](../docs/08-getting-agents-to-use-memory.md).
+`engraphy/tests/test_agent_cueing.py` holds all four identical, and holds the
+trigger table identical to the skill that authors it.
 
 Install steps for both harnesses are in
-[docs/08-memory-in-your-coding-agent.md](../docs/08-memory-in-your-coding-agent.md).
+[docs/08-getting-agents-to-use-memory.md](../docs/08-getting-agents-to-use-memory.md).
 The protocol these files carry is authored in
 [skills/coding-memory-protocol.md](../skills/coding-memory-protocol.md), and
 the vocabulary it uses comes from [packs/dev](../packs/dev/pack.yaml).
