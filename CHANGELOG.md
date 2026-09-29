@@ -22,10 +22,14 @@
   briefing on the session's first request. The hooks read only, read the
   credential from the harness's own registration, use the standard library
   alone, and exit 0 on every path.
-- [docs/08-memory-in-your-coding-agent.md](docs/08-memory-in-your-coding-agent.md):
-  installing all of it in GitHub Copilot or Claude Code, including the
-  user-level files that apply to every repository, and four checks that
-  confirm it is working.
+- [docs/08-getting-agents-to-use-memory.md](docs/08-getting-agents-to-use-memory.md):
+  the operator guide. Why an agent under-uses memory, the three layers that fix
+  it, and copy-paste snippets organised by destination: the CLAUDE.md block,
+  the Claude Code skill, the hook wiring, the Copilot instructions file by both
+  its user-level and repository routes, and the pack commands for a new space
+  or a space that already carries a pack. Four checks confirm the result.
+- `agent/claude-code/skills/engraphy-memory/SKILL.md`, the same instruction
+  block as a Claude Code skill, for a skills folder rather than CLAUDE.md.
 - `engraphy-admin space export --space … --out …` writes a space's scopes, node
   types, nodes and edges to a JSONL bundle, or only the scopes named with
   `--scope`. The export's database connection refuses every write, and the

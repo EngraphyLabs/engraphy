@@ -26,6 +26,8 @@ REPO_ROOT = pathlib.Path(__file__).parents[2]
 SKILL = REPO_ROOT / "skills" / "coding-memory-protocol.md"
 INSTRUCTIONS = REPO_ROOT / "agent" / "coding-agent-instructions.md"
 COPILOT = REPO_ROOT / "agent" / "copilot" / "engraphy-memory.instructions.md"
+CC_SKILL = REPO_ROOT / "agent" / "claude-code" / "skills" / "engraphy-memory" / "SKILL.md"
+OPERATOR_GUIDE = REPO_ROOT / "docs" / "08-getting-agents-to-use-memory.md"
 DEV_PACK = REPO_ROOT / "packs" / "dev" / "pack.yaml"
 WIRE_PENDING = REPO_ROOT / "engraphy" / "tests" / "fixtures" / "wire" / "write_needs_confirmation.json"
 
@@ -36,9 +38,11 @@ AUTHORED_FILES = [
     SKILL,
     INSTRUCTIONS,
     COPILOT,
+    CC_SKILL,
+    OPERATOR_GUIDE,
     DEV_PACK,
     REPO_ROOT / "packs" / "dev" / "agent-guide.md",
-    REPO_ROOT / "docs" / "08-memory-in-your-coding-agent.md",
+    REPO_ROOT / "docs" / "08-getting-agents-to-use-memory.md",
     REPO_ROOT / "agent" / "README.md",
     REPO_ROOT / "agent" / "claude-code" / "hooks" / "engraphy_cue.py",
     REPO_ROOT / "agent" / "claude-code" / "settings-snippet.json",
@@ -86,25 +90,65 @@ def test_the_instruction_block_names_the_vocabulary():
         assert f"`{tool}`" in text
 
 
-def test_the_copilot_file_carries_the_block_verbatim():
-    """Copilot runs no hooks, so this file is one of the two levers there. It
-    is the block plus the frontmatter VS Code reads, and nothing else: a body
-    that drifts from the authored block is a second protocol."""
-    text = COPILOT.read_text(encoding="utf-8")
-    front, _, body = text.partition("---\n\n")
-    assert front.startswith("---\n")
-    for key in ("name:", "description:", "applyTo: '**'"):
-        assert key in front, f"the Copilot frontmatter is missing {key}"
-    block = INSTRUCTIONS.read_text(encoding="utf-8").split(
+def authored_block() -> str:
+    return INSTRUCTIONS.read_text(encoding="utf-8").split(
         "<!-- BEGIN ENGRAPHY INSTRUCTIONS -->", 1)[1].split(
         "<!-- END ENGRAPHY INSTRUCTIONS -->", 1)[0].strip("\n")
-    assert body.strip("\n") == block
+
+
+@pytest.mark.parametrize("path,keys", [
+    (COPILOT, ("name:", "description:", "applyTo: '**'")),
+    (CC_SKILL, ("name: engraphy-memory", "description:")),
+])
+def test_a_destination_file_carries_the_block_verbatim(path, keys):
+    """Each harness file is the block plus the frontmatter that harness reads,
+    and nothing else. A body that drifts from the authored block is a second
+    protocol, told slightly differently."""
+    front, _, body = path.read_text(encoding="utf-8").partition("---\n\n")
+    assert front.startswith("---\n")
+    for key in keys:
+        assert key in front, f"{path.name} frontmatter is missing {key}"
+    assert body.strip("\n") == authored_block()
+
+
+def test_the_operator_guide_pastes_the_block_verbatim():
+    """The guide is the copy-paste source, so its snippet is the block itself,
+    markers included, not a retelling of it."""
+    text = OPERATOR_GUIDE.read_text(encoding="utf-8")
+    snippet = text.split("<!-- BEGIN ENGRAPHY INSTRUCTIONS -->", 1)[1].split(
+        "<!-- END ENGRAPHY INSTRUCTIONS -->", 1)[0].strip("\n")
+    assert snippet == authored_block()
+
+
+@pytest.mark.parametrize("path", [COPILOT, CC_SKILL], ids=["copilot", "skill"])
+def test_the_operator_guide_carries_each_destination_file_whole(path):
+    """A section lifted onto a page on its own is still installable: the guide
+    prints each destination's file entire, frontmatter included, rather than
+    telling the reader to fetch the body from another section."""
+    guide = OPERATOR_GUIDE.read_text(encoding="utf-8")
+    assert path.read_text(encoding="utf-8").strip("\n") in guide, (
+        f"{path.name} is not pasted into the guide verbatim")
+
+
+def test_the_operator_guide_names_every_destination():
+    # A snippet a reader cannot place is a snippet they do not install.
+    text = OPERATOR_GUIDE.read_text(encoding="utf-8")
+    for destination in (
+        "~/.claude/CLAUDE.md",
+        "~/.claude/skills/engraphy-memory/SKILL.md",
+        "~/.claude/settings.json",
+        "engraphy-memory.instructions.md",
+        ".github/copilot-instructions.md",
+        "engraphy-admin pack apply packs/dev/pack.yaml",
+        "engraphy-admin pack upgrade",
+    ):
+        assert destination in text, f"the guide never names {destination}"
 
 
 def test_both_copies_cue_the_two_moments_explicitly():
     # The no-hook harness has nothing else to lean on: the recall moment and
     # the write moment have to be stated, not implied.
-    for path in (INSTRUCTIONS, COPILOT):
+    for path in (INSTRUCTIONS, COPILOT, CC_SKILL):
         text = path.read_text(encoding="utf-8")
         assert "At the start of a ticket, bug fix or review" in text
         assert "Before you reply, two checks" in text

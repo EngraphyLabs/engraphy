@@ -30,7 +30,7 @@ is unreachable, because a quiet gap invites the session to assume a lesson was
 stored when it was not.
 
 Install: agent/claude-code/settings-snippet.json, and
-docs/08-memory-in-your-coding-agent.md.
+docs/08-getting-agents-to-use-memory.md.
 """
 
 from __future__ import annotations

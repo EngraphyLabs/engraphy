@@ -15,7 +15,7 @@ Three packs ship with the engine, each with an agent guide beside it:
 |---|---|
 | [`packs/starter`](../packs/starter/pack.yaml) | The default for a new space: notes, people, preferences, commitments, project pointers. |
 | [`packs/conversational`](../packs/conversational/pack.yaml) | Personal memory across many conversations: people, things, facts, events, opinions, decisions. |
-| [`packs/dev`](../packs/dev/pack.yaml) | Code work: components, conventions, anti-patterns, off-limits areas, recurring bugs, stakeholders, decisions. See [Memory in your coding agent](08-memory-in-your-coding-agent.md). |
+| [`packs/dev`](../packs/dev/pack.yaml) | Code work: components, conventions, anti-patterns, off-limits areas, recurring bugs, stakeholders, decisions. See [Memory in your coding agent](08-getting-agents-to-use-memory.md). |
 
 ## Anatomy of a pack
 
