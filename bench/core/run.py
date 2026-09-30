@@ -153,7 +153,13 @@ DB = os.environ.get(
 APP_DB = DB.replace("postgres:engraphy@", "engraphy_app:engraphy_app_test_only@")
 
 LOADERS = {"locomo": LoCoMoLoader}
-EXTRACTORS = ("verbatim", "llm")
+# `llm_wide` is `llm` with a different extraction prompt (extract-wide.md):
+# completeness over economy, what one person says to or about another in scope
+# with both named, and a new instance of a recurring thing treated as a new
+# fact. It is a separate extractor name, not a flag, so it takes its own scope
+# and its own arm_id and can never be confused with `llm` in a manifest.
+EXTRACTORS = ("verbatim", "llm", "llm_wide")
+EXTRACT_PROMPTS = {"llm": "extract.md", "llm_wide": "extract-wide.md"}
 POLICIES = ("always_distinct", "llm_adjudicate")
 JUDGE_PROVIDERS = ("gemini", "claude", "openai")
 
@@ -1345,6 +1351,7 @@ def build_manifest(args, corpus: Corpus, arms: list[Arm], pack_meta: dict,
         "resolved_models": {},
         "prompt_hashes": {
             "extract.md": prompt_hash("extract.md"),
+            "extract-wide.md": prompt_hash("extract-wide.md"),
             "judge.md": prompt_hash("judge.md"),
             "adjudicate.md": prompt_hash("adjudicate.md"),
             # read.md is retired: the reader's instruction is now the shipped

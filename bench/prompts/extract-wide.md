@@ -4,11 +4,19 @@ You are given a window of consecutive turns from one conversation, and the title
 
 ## What to extract
 
-Extract a memory for each **durable fact** — something that would still be useful to know in a later conversation. Prefer fewer, well-formed memories over many fragments. Give each distinct fact its own memory — one whole fact per node, in the speaker's own concrete terms — rather than folding several facts into one node's attributes.
+Extract a memory for each **durable fact**: something that would still be useful to know in a later conversation. Give each distinct fact its own memory, one whole fact per node, in the speaker's own concrete terms, rather than folding several facts into one node's attributes or into one topical summary.
+
+Completeness matters more than economy. A window that supports twelve distinct facts should produce twelve memories, not three that gesture at them. The cost of a memory that is never recalled is small; the cost of a fact that was said and never stored is that it can never be recalled at all.
 
 Do extract: facts about people, their relationships, preferences, plans and obligations; things that happened; ongoing projects or resources; stable circumstances.
 
-Do not extract: pleasantries, acknowledgements, questions with no answer yet, or anything whose meaning depends entirely on the immediate exchange. Do not extract a fact that is already covered by one of the prior titles unless this window genuinely changes or extends it.
+**What one person says to or about another is a fact about them, and is in scope.** Advice, a suggestion, an offer, a request, an assessment of someone's work or decision, and a stated reaction to something that happened are all worth keeping: a later reader may need to know who said it, to whom, and about what. Write them with the speaker and the person addressed both named, so the memory carries its own attribution and can never be read as someone else's statement.
+
+Keep the small concrete particulars too: a named object and what was done with it, where something was found, what a thing was said to mean or stand for. These are the details a later reader asks about by name.
+
+Do not extract: greetings, acknowledgements that carry no content of their own, or a question that is never answered.
+
+Do not restate a fact already covered by one of the prior titles. But **a new instance of something recurring is a new fact, not a restatement.** When a prior title records that someone does a thing, and this window shows them doing it on another occasion, in another place, or with another object, write that instance as its own memory rather than treating it as covered.
 
 Write each memory so it stands alone. A reader who sees only the title and body, with no transcript, must be able to understand it — resolve pronouns to names, and make the subject explicit.
 

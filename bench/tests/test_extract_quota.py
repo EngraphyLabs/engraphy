@@ -45,3 +45,31 @@ def test_an_ordinary_llm_error_still_yields_an_empty_window():
 
 def test_an_empty_model_answer_is_still_an_empty_window():
     assert LLMExtractor(_Empty(), PACK).extract(_window()).nodes == ()
+
+
+def test_llm_wide_is_a_separate_extractor_with_its_own_prompt_and_scope():
+    """The wide prompt is opt-in: `llm` is untouched, `llm_wide` is its own arm."""
+    from bench.core.run import EXTRACT_PROMPTS, EXTRACTORS, parse_arm
+    from bench.core.space import scope_id_for
+
+    assert EXTRACT_PROMPTS["llm"] == "extract.md"
+    assert EXTRACT_PROMPTS["llm_wide"] == "extract-wide.md"
+    assert set(EXTRACT_PROMPTS) | {"verbatim"} == set(EXTRACTORS)
+
+    arm = parse_arm("llm_wide-conversational:search_only:k=25")
+    assert arm.extractor == "llm_wide" and arm.pack == "conversational" and arm.k == 25
+    assert arm.arm_id == "llm_wide-conversational/search_only/always_distinct/k25"
+    # Its own scope, so a wide ingest can never land in the `llm` store.
+    assert scope_id_for("conv-26:llm_wide") != scope_id_for("conv-26:llm")
+
+
+def test_both_extraction_prompts_exist_and_differ():
+    from bench.core.llm import load_prompt
+
+    base, wide = load_prompt("extract.md"), load_prompt("extract-wide.md")
+    assert base and wide and base != wide
+    # The clauses the wide prompt exists to remove.
+    assert "Prefer fewer, well-formed memories" in base
+    assert "Prefer fewer, well-formed memories" not in wide
+    assert "depends entirely on the immediate exchange" in base
+    assert "depends entirely on the immediate exchange" not in wide
