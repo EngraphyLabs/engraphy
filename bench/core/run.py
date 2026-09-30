@@ -392,7 +392,16 @@ async def phase_ingest(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
         print(f"  [ingest] {haystack_id} / {extractor_name} / {pack_name} → {scope} "
               f"({len(haystack.sessions)} sessions, {haystack.turn_count} turns)", flush=True)
 
-        stats = await ingest_haystack(pool, arm_space, haystack, extractor, confirm_policy=policy)
+        try:
+            stats = await ingest_haystack(pool, arm_space, haystack, extractor,
+                                          confirm_policy=policy)
+        except QuotaExhausted:
+            # Not checkpointed: without a row this conversation is re-ingested on
+            # resume, and the next pass clears the partial scope first. Recording
+            # it would leave the store short a whole conversation and score it.
+            print(f"  [quota] ingest of {haystack_id} stopped part-way; it is not "
+                  "recorded, so a resume ingests it again", flush=True)
+            raise
         row = stats.as_dict()
         row.update({"extractor": extractor_name, "pack": pack_name, "scope_id": scope,
                     "space_id": space_id, "done": True,
