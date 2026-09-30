@@ -238,6 +238,7 @@ class LLMExtractor:
 
     def extract(self, window: ExtractWindow) -> ExtractResult:
         from bench.core.llm import LLMError
+        from bench.core.providers import QuotaExhausted
 
         user = _render_window(window, self._node_types, self._edge_types,
                               show_turn_ids=self.retain_source_text)
@@ -249,6 +250,14 @@ class LLMExtractor:
                 max_tokens=self.max_tokens,
                 effort=self.effort,
             )
+        except QuotaExhausted:
+            # NOT a failed window. QuotaExhausted subclasses LLMError, so the
+            # broad catch below used to swallow it: every window of a capped
+            # ingest returned empty, the haystack recorded "0 drafts -> 0 nodes",
+            # and the run marked itself done with an empty store and exit 0.
+            # A quota stop is a clean resumable stop and belongs to the run loop,
+            # which knows how to checkpoint and resume it.
+            raise
         except LLMError:
             # One failed window must not abort a 500-haystack run. The caller
             # records the gap; an empty result is honest -- it says this window
