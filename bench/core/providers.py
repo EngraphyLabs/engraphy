@@ -246,6 +246,24 @@ def _looks_like_usage_limit(text: str) -> bool:
     ))
 
 
+def _reason(text: str) -> str:
+    """The CLI's own sentence, not the envelope it arrived in.
+
+    `claude -p --output-format json` reports a failure as a JSON document whose
+    `result` holds the reason, and on some failures it also exits non-zero, which
+    puts that whole document on stdout. Quoting the document verbatim buries the
+    one sentence an operator needs in a hundred fields of zeroes.
+    """
+    body = text.strip()
+    if body.startswith("{"):
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return body
+        return str(payload.get("result") or payload.get("error") or body)
+    return body
+
+
 def _looks_like_auth_failure(text: str) -> bool:
     """Does a CLI failure mean "no usable credentials" rather than "no allowance"?
 
@@ -476,11 +494,12 @@ class ClaudeCLIClient:
             if _looks_like_auth_failure(stderr) or _looks_like_auth_failure(stdout):
                 raise AuthExpired(
                     "the Claude CLI has no usable credentials: "
-                    f"{(stderr or stdout)[:300]}. Re-authenticate it (`claude login`) "
+                    f"{_reason(stderr or stdout)[:300]}. "
+                    "Re-authenticate it (`claude login`) "
                     "and run the same command again; waiting will not clear this.")
             if _looks_like_usage_limit(stderr) or _looks_like_usage_limit(stdout):
                 raise QuotaExhausted(
-                    f"Claude CLI usage limit reached: {(stderr or stdout)[:400]}")
+                    f"Claude CLI usage limit reached: {_reason(stderr or stdout)[:400]}")
             # Exit non-zero with NO diagnostic on either stream is the signature
             # of an auth / usage / rate cap: the CLI bails without a message.
             # Seen live (2026-07-23) -- five consecutive `exited 1` with empty
@@ -491,7 +510,7 @@ class ClaudeCLIClient:
             if not stderr and _looks_like_auth_failure(stdout):
                 raise AuthExpired(
                     "the Claude CLI exited without a diagnostic and its output "
-                    f"reports an authentication failure: {stdout[:300]}. "
+                    f"reports an authentication failure: {_reason(stdout)[:300]}. "
                     "Re-authenticate it (`claude login`).")
             if not stderr:
                 raise QuotaExhausted(

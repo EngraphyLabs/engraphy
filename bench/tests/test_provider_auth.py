@@ -86,3 +86,16 @@ def test_the_supervisor_halts_on_an_auth_stop(reason):
 
 def test_the_supervisor_still_sleeps_on_a_usage_stop():
     assert stop_class("usage limit reached; resets 5:50pm") == "usage"
+
+
+def test_the_stop_reason_is_the_cli_sentence_not_the_json_envelope(monkeypatch):
+    """On a non-zero exit the whole JSON document lands on stdout. The operator
+    needs the sentence, so the message quotes `result` and not the envelope."""
+    payload = json.dumps({"is_error": True, "result": EXPIRED, "usage": {"input_tokens": 0},
+                          "modelUsage": {}, "session_id": "abc"})
+    client = _client(monkeypatch, _completed(payload, rc=1))
+    with pytest.raises(AuthExpired) as caught:
+        client.complete("system", "user")
+    message = str(caught.value)
+    assert EXPIRED in message
+    assert "session_id" not in message and "input_tokens" not in message
