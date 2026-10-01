@@ -238,7 +238,7 @@ class LLMExtractor:
 
     def extract(self, window: ExtractWindow) -> ExtractResult:
         from bench.core.llm import LLMError
-        from bench.core.providers import QuotaExhausted
+        from bench.core.providers import AuthExpired, QuotaExhausted
 
         user = _render_window(window, self._node_types, self._edge_types,
                               show_turn_ids=self.retain_source_text)
@@ -250,8 +250,8 @@ class LLMExtractor:
                 max_tokens=self.max_tokens,
                 effort=self.effort,
             )
-        except QuotaExhausted:
-            # A usage cap is not a failed window: every remaining window would
+        except (QuotaExhausted, AuthExpired):
+            # A usage cap or an expired session is not a failed window: every remaining window would
             # fail the same way, and an empty result here would be recorded as a
             # conversation that legitimately yielded nothing. Left to propagate so
             # the run stops cleanly and a resume re-ingests this conversation.

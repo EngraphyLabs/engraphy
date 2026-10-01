@@ -83,7 +83,7 @@ from bench.core.llm import (
     LLMError, ROLE_MODELS, openai_model_for, openai_role_manifest, prompt_hash)
 from bench.core.meter import Meter
 from bench.core.providers import (
-    ClaudeCLIClient, GeminiClient, OpenAICompatClient, QuotaExhausted,
+    AuthExpired, ClaudeCLIClient, GeminiClient, OpenAICompatClient, QuotaExhausted,
     TransientRunStop, stop_class)
 from bench.core.report import aggregate, load_rows, render_failures, render_report
 from bench.core.retrieve import DEFAULT_SEARCH_LIMIT, STRATEGIES, probe_search
@@ -395,7 +395,7 @@ async def phase_ingest(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
         try:
             stats = await ingest_haystack(pool, arm_space, haystack, extractor,
                                           confirm_policy=policy)
-        except QuotaExhausted:
+        except (QuotaExhausted, AuthExpired):
             # Not checkpointed: without a row this conversation is re-ingested on
             # resume, and the next pass clears the partial scope first. Recording
             # it would leave the store short a whole conversation and score it.
@@ -1627,6 +1627,13 @@ async def main() -> int:
                                concurrency=args.concurrency, stance=args.reader_stance,
                                provider=args.provider,
                                contract=args.reader_contract)
+    except AuthExpired as exc:
+        # No credentials: every retry fails the same way, so this halts for the
+        # operator rather than resuming into the same wall.
+        quota_stop = True
+        print()
+        print("  [auth] " + str(exc))
+        print("  [stop] class=halt")
     except QuotaExhausted as exc:
         # A usage limit during answering is a clean, resumable stop -- the errored
         # questions were NOT checkpointed, so a resume re-answers them. Skip the

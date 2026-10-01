@@ -30,7 +30,7 @@ from collections.abc import Callable
 
 from bench.core import run as harness
 from bench.core.judge import Verdict
-from bench.core.providers import QuotaExhausted
+from bench.core.providers import AuthExpired, QuotaExhausted
 from bench.core.report import aggregate
 
 __all__ = ["Source", "finish", "judge_pass", "load_source", "read_pass", "resolve_run_dir",
@@ -119,6 +119,9 @@ def read_pass(ck: harness.Checkpoint, todo: list[dict], read_one: Callable[[dict
                 if kind == "quota":
                     stop_reason = stop_reason or f"usage limit: {payload}"
                     continue
+                if kind == "auth":
+                    stop_reason = stop_reason or f"{NO_CREDENTIALS} {payload}"
+                    continue
                 if payload.get("error"):
                     last_error = payload["error"]
                     consecutive += 1
@@ -165,6 +168,9 @@ def judge_pass(ck: harness.Checkpoint, grade_one: Callable[[dict], Verdict], *,
                 if kind == "quota":
                     stop_reason = stop_reason or f"usage limit: {payload}"
                     continue
+                if kind == "auth":
+                    stop_reason = stop_reason or f"{NO_CREDENTIALS} {payload}"
+                    continue
                 row, verdict = payload
                 if verdict.graded_by == "judge_error":
                     last_error = verdict.error
@@ -191,6 +197,8 @@ def _call(fn, item):
         return "ok", fn(item)
     except QuotaExhausted as exc:
         return "quota", exc
+    except AuthExpired as exc:
+        return "auth", exc
 
 
 def _now() -> str:
@@ -200,6 +208,9 @@ def _now() -> str:
 # A pass that finished its loop with some rows still failing. The failures were
 # not checkpointed, so a relaunch retries exactly those rows.
 RESIDUAL = "residual errors:"
+# An expired session: every retry fails identically, so the pass halts for the
+# operator instead of being relaunched into the same wall.
+NO_CREDENTIALS = "no usable credentials:"
 
 
 def stop_class(reason: str) -> str:
@@ -209,6 +220,8 @@ def stop_class(reason: str) -> str:
         return "usage"
     if reason.startswith(RESIDUAL):
         return "transient"
+    if reason.startswith(NO_CREDENTIALS):
+        return "halt"
     return "hard"
 
 

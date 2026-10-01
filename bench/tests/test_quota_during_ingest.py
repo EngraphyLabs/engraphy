@@ -17,7 +17,7 @@ from bench.core.corpus import Session, Turn
 from bench.core.extract import ExtractWindow, LLMExtractor, NodeDraft
 from bench.core.ingest import LLMAdjudicate
 from bench.core.llm import LLMError, LLMResponse
-from bench.core.providers import QuotaExhausted
+from bench.core.providers import AuthExpired, QuotaExhausted
 
 PACK = {"node_types": {"fact": {"attrs": {}}}, "edge_types": {}}
 
@@ -77,3 +77,16 @@ def test_any_other_adjudication_failure_still_falls_back():
 
 def test_a_clean_extraction_still_returns_a_result():
     assert LLMExtractor(Fine(), PACK).extract(window()).nodes == ()
+
+
+def test_an_expired_session_also_stops_extraction():
+    """Same reasoning as a cap, and worse: every later window fails identically,
+    and no amount of waiting fixes it."""
+    with pytest.raises(AuthExpired):
+        LLMExtractor(Failing(AuthExpired("no usable credentials")), PACK).extract(window())
+
+
+def test_an_expired_session_also_stops_adjudication():
+    with pytest.raises(AuthExpired):
+        LLMAdjudicate(Failing(AuthExpired("no usable credentials"))).decide(
+            {"candidates": []}, draft())
