@@ -73,3 +73,16 @@ def test_both_extraction_prompts_exist_and_differ():
     assert "Prefer fewer, well-formed memories" not in wide
     assert "depends entirely on the immediate exchange" in base
     assert "depends entirely on the immediate exchange" not in wide
+
+
+def test_the_arm_name_selects_the_prompt_the_extractor_actually_runs():
+    """The registry naming `extract-wide.md` is not enough: an A/B is only an A/B
+    if the built extractor loads that file. Both arms carrying `extract.md` would
+    have produced two identical stores and a null result that looked measured."""
+    from bench.core.run import _build_extractor
+
+    pack = {"node_types": {"fact": {"attrs": {}}}, "edge_types": {}}
+    assert _build_extractor("llm", pack).prompt_name == "extract.md"
+    assert _build_extractor("llm_wide", pack).prompt_name == "extract-wide.md"
+    assert (_build_extractor("llm", pack).system
+            != _build_extractor("llm_wide", pack).system)
