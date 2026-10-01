@@ -31,6 +31,9 @@ import psycopg
 
 from bench.core import run as harness
 from bench.k_sweep import PREFIX, _dia_ids, _norm, evidence_turns
+from bench.console import use_utf8_streams
+
+use_utf8_streams()
 
 
 def scope_of(haystack_id: str, extractor: str) -> str:

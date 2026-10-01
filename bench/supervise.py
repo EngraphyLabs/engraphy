@@ -43,6 +43,9 @@ import subprocess
 import sys
 import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from bench.console import use_utf8_streams
+
+use_utf8_streams()
 
 # Substrings that mark a Claude usage-limit stop, used only as a FALLBACK when a
 # cycle's output carries no explicit `[stop] class=...` line (an older run, or a

@@ -32,6 +32,9 @@ from bench.core import run as harness
 from bench.core.judge import Verdict
 from bench.core.providers import AuthExpired, QuotaExhausted
 from bench.core.report import aggregate
+from bench.console import use_utf8_streams
+
+use_utf8_streams()
 
 __all__ = ["Source", "finish", "judge_pass", "load_source", "read_pass", "resolve_run_dir",
            "stop"]

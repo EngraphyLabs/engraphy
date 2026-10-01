@@ -29,6 +29,9 @@ from bench.core import run as harness
 from bench.core.providers import ClaudeCLIClient
 from bench.core.reference import ReferenceJudge, ReferenceReader, conventions_manifest, \
     reference_date
+from bench.console import use_utf8_streams
+
+use_utf8_streams()
 
 SUFFIX = "/reference-conventions"
 
