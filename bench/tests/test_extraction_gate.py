@@ -76,3 +76,13 @@ def test_the_exact_test_is_two_sided_and_handles_no_discordance():
     assert mcnemar_exact(0, 0) == 1.0
     assert mcnemar_exact(10, 0) < 0.01
     assert mcnemar_exact(5, 5) == 1.0
+
+
+def test_two_extractors_sharing_one_space_are_reported_separately():
+    """Two arms of one run share a space and are separated by scope, so a report
+    keyed on the space alone kept only the last arm and could not be compared.
+    Seen 2026-10-02: coverage ran over all 389 seen questions and the gate could
+    not read it."""
+    source = (REPO / "bench" / "extraction_coverage.py").read_text(encoding="utf-8")
+    assert 'report["spaces"][f"{space}#{extractor}"]' in source
+    assert '"space": space,' in source

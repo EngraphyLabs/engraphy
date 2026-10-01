@@ -88,7 +88,11 @@ def main() -> int:
     report: dict = {"spaces": {}, "questions": len(questions), "haystacks": wanted}
     for space, extractor in zip(args.space, extractors):
         bodies = store_bodies(args.dsn, space)
-        size = {sc: len(b) for sc, b in sorted(bodies.items())}
+        # Only this extractor's scopes. Two arms share a space, so counting the
+        # whole space reports both arms' memories against each of them and hides
+        # what the extraction change actually costs to store.
+        mine = {scope_of(h, extractor) for h in wanted}
+        size = {sc: len(b) for sc, b in sorted(bodies.items()) if sc in mine}
         held_all, held_any, per_cat = 0, 0, defaultdict(lambda: [0, 0])
         scorable = 0
         # Per question, so two spaces can be compared as paired outcomes rather
@@ -111,7 +115,11 @@ def main() -> int:
                 cat = gap[q.question_id]
                 per_cat[cat][1] += 1
                 per_cat[cat][0] += 1 if hits == len(keys) else 0
-        report["spaces"][space] = {
+        # Keyed by space AND extractor. Two arms of one run share a space and are
+        # kept apart by scope, so keying on the space alone made the second arm
+        # overwrite the first and left a report that could not be compared.
+        report["spaces"][f"{space}#{extractor}"] = {
+            "space": space,
             "extractor": extractor,
             "memories": sum(size.values()),
             "memories_by_scope": size,

@@ -63,11 +63,10 @@ def main() -> int:
     spaces = report["spaces"]
 
     def find(extractor: str, *, replicate: bool) -> dict | None:
-        for space_id, body in spaces.items():
+        for key, body in spaces.items():
             if body["extractor"] != extractor:
                 continue
-            is_rep = "-rep-" in space_id or space_id.endswith("-rep-conversational")
-            if is_rep == replicate:
+            if ("-rep-" in body.get("space", key)) == replicate:
                 return body
         return None
 
