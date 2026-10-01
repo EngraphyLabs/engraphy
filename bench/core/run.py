@@ -312,6 +312,19 @@ def retrieval_config(arm: Arm) -> dict:
                if hasattr(strategy, name)}}
 
 
+def extract_prompts_manifest(arms) -> dict:
+    """Which prompt each arm's extractor loads, per arm, with its hash.
+
+    The run-wide `prompt_hashes` lists every prompt in the tree, so it reads the
+    same whether or not an arm selected the wide one. An extraction A/B rests on
+    the selection, so the selection is what has to be recorded for a third party
+    to check that the two arms differed in the thing under test.
+    """
+    return {arm.arm_id: {"prompt": EXTRACT_PROMPTS[arm.extractor],
+                         "sha256": prompt_hash(EXTRACT_PROMPTS[arm.extractor])}
+            for arm in arms if arm.extractor in EXTRACT_PROMPTS}
+
+
 @dataclass(frozen=True, slots=True)
 class ArmSpace:
     """A `RunSpace` view whose scopes are qualified by extractor.
@@ -1351,6 +1364,7 @@ def build_manifest(args, corpus: Corpus, arms: list[Arm], pack_meta: dict,
         "corpus": corpus.stats(),
         "arms": [a.as_dict() for a in arms],
         "retrieval_configs": {a.arm_id: retrieval_config(a) for a in arms},
+        "extract_prompts": extract_prompts_manifest(arms),
         "provider": args.provider,
         "role_models": _role_models_manifest(args),
         # Endpoint hosts and structured-output mode for every distinct client the

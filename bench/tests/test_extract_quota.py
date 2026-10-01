@@ -86,3 +86,16 @@ def test_the_arm_name_selects_the_prompt_the_extractor_actually_runs():
     assert _build_extractor("llm_wide", pack).prompt_name == "extract-wide.md"
     assert (_build_extractor("llm", pack).system
             != _build_extractor("llm_wide", pack).system)
+
+
+def test_the_manifest_records_which_prompt_each_arm_selected():
+    """`prompt_hashes` lists every prompt in the tree, so it cannot tell an
+    auditor whether the wide arm really ran the wide prompt. This can."""
+    from bench.core.run import extract_prompts_manifest, parse_arm
+
+    arms = [parse_arm("llm-conversational:search_only:k=25"),
+            parse_arm("llm_wide-conversational:search_only:k=25")]
+    recorded = extract_prompts_manifest(arms)
+    names = {entry["prompt"] for entry in recorded.values()}
+    assert names == {"extract.md", "extract-wide.md"}
+    assert len({entry["sha256"] for entry in recorded.values()}) == 2

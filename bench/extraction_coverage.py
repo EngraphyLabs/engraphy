@@ -88,6 +88,11 @@ def main() -> int:
         size = {sc: len(b) for sc, b in sorted(bodies.items())}
         held_all, held_any, per_cat = 0, 0, defaultdict(lambda: [0, 0])
         scorable = 0
+        # Per question, so two spaces can be compared as paired outcomes rather
+        # than as two rates. Extraction is a model call, so the comparison that
+        # decides anything is paired: which questions one store holds and the
+        # other does not.
+        held_by_question: dict[str, int] = {}
         for q in questions:
             keys = [turns[(q.haystack_id, d)][:PREFIX] for d in _dia_ids(q.evidence)
                     if (q.haystack_id, d) in turns]
@@ -98,6 +103,7 @@ def main() -> int:
             hits = sum(1 for k in keys if any(k in b for b in scope_bodies))
             held_all += 1 if hits == len(keys) else 0
             held_any += 1 if hits else 0
+            held_by_question[q.question_id] = 1 if hits == len(keys) else 0
             if q.question_id in gap:
                 cat = gap[q.question_id]
                 per_cat[cat][1] += 1
@@ -113,6 +119,7 @@ def main() -> int:
             "gap_set": {c: {"recovered": v[0], "n": v[1]} for c, v in sorted(per_cat.items())},
             "gap_set_total": {"recovered": sum(v[0] for v in per_cat.values()),
                               "n": sum(v[1] for v in per_cat.values())},
+            "all_evidence_held_by_question": held_by_question,
         }
 
     text = json.dumps(report, indent=2)
