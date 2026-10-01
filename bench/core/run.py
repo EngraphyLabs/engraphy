@@ -432,9 +432,12 @@ def _client_for(role: str, provider: str):
 
 
 def _build_extractor(name: str, pack: dict, provider: str = "claude-cli"):
+    """The arm's extractor name selects the prompt, which is what makes
+    `llm_wide` a different extractor rather than a second name for `llm`."""
     if name == "verbatim":
         return VerbatimExtractor()
-    return LLMExtractor(_client_for("extractor", provider), pack)
+    return LLMExtractor(_client_for("extractor", provider), pack,
+                        prompt_name=EXTRACT_PROMPTS[name])
 
 
 def _build_policy(name: str, provider: str = "claude-cli"):
