@@ -1725,6 +1725,14 @@ async def main() -> int:
             "note": "not measured on this run — the calibration phase did not run.",
         }
 
+    # Which phases this invocation asked for, and whether they all ran to the
+    # end. Completion used to be read off `report.md`, which only the report
+    # phase writes, so an ingest-only pass that stored every conversation
+    # correctly looked indistinguishable from a failed one. A phase set is the
+    # thing a caller asked for, so it is the thing the manifest records.
+    manifest["phases_requested"] = sorted(phases)
+    manifest["phases_completed"] = [] if quota_stop else sorted(phases)
+
     if "report" in phases:
         print("\n== report ==")
         agg = phase_report(ck, manifest)
