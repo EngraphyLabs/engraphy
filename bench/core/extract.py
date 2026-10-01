@@ -251,10 +251,13 @@ class LLMExtractor:
                 effort=self.effort,
             )
         except (QuotaExhausted, AuthExpired):
-            # A usage cap or an expired session is not a failed window: every remaining window would
-            # fail the same way, and an empty result here would be recorded as a
-            # conversation that legitimately yielded nothing. Left to propagate so
-            # the run stops cleanly and a resume re-ingests this conversation.
+            # NOT a failed window. Both subclass LLMError, so the broad catch
+            # below used to swallow them: every window of a capped or
+            # unauthenticated ingest returned empty, the haystack recorded
+            # "0 drafts -> 0 nodes", and the run marked itself done with an empty
+            # store and exit 0. A cap is a clean resumable stop; an expired
+            # session needs an operator. Both belong to the run loop, which knows
+            # how to checkpoint, resume, or halt.
             raise
         except LLMError:
             # One failed window must not abort a 500-haystack run. The caller
