@@ -52,7 +52,8 @@ def resolve_run_dir(value: str | pathlib.Path) -> pathlib.Path:
 class Source:
     """A completed run, as an offline pass sees it."""
 
-    def __init__(self, run_dir: pathlib.Path, envelopes: pathlib.Path | None = None) -> None:
+    def __init__(self, run_dir: pathlib.Path, envelopes: pathlib.Path | None = None,
+                 arm: str | None = None) -> None:
         self.dir = run_dir
         self.manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
         dataset = harness.REPO / "datasets" / self.manifest["dataset"]["path"]
@@ -64,25 +65,40 @@ class Source:
                         for r in harness.load_rows(run_dir / "results.jsonl")}
         env_path = envelopes or run_dir / "envelopes.jsonl"
         self.envelope_source = str(env_path)
-        self.envelopes: dict[str, dict] = {}
-        self.arms: set[str] = set()
+        # Per arm, because a run may carry more than one and an offline pass reads
+        # exactly one of them. A run with two arms holds two envelopes per
+        # question, and flattening them would hand the pass a mixture of two
+        # configurations under one name.
+        by_arm: dict[str, dict[str, dict]] = {}
         for row in harness.load_rows(env_path):
-            self.envelopes[row["question_id"]] = row["envelope"]
-            self.arms.add(row["arm"])
-        if len(self.arms) != 1:
-            raise SystemExit(f"{env_path}: expected envelopes for one arm, found {sorted(self.arms)}")
-        self.arm = next(iter(self.arms))
+            by_arm.setdefault(row["arm"], {})[row["question_id"]] = row["envelope"]
+        self.arms = set(by_arm)
+        if arm is not None:
+            if arm not in by_arm:
+                raise SystemExit(f"{env_path}: no envelopes for arm {arm}; "
+                                 f"it holds {sorted(self.arms)}")
+            self.arm = arm
+        elif len(by_arm) == 1:
+            self.arm = next(iter(by_arm))
+        else:
+            raise SystemExit(f"{env_path}: holds envelopes for {sorted(self.arms)}; "
+                             "name the one to read with --arm")
+        self.envelopes: dict[str, dict] = by_arm[self.arm]
 
     def source_row(self, question_id: str) -> dict | None:
-        """The run's own result for a question, under the run's arm."""
-        for (arm, qid), row in self.results.items():
+        """The run's own result for a question, under the arm being read."""
+        row = self.results.get((self.arm, question_id))
+        if row is not None:
+            return row
+        for (arm, qid), candidate in self.results.items():
             if qid == question_id and not arm.endswith(("/reference-conventions",)):
-                return row
+                return candidate
         return None
 
 
-def load_source(run_dir, envelopes=None) -> Source:
-    return Source(resolve_run_dir(run_dir), pathlib.Path(envelopes) if envelopes else None)
+def load_source(run_dir, envelopes=None, arm=None) -> Source:
+    return Source(resolve_run_dir(run_dir),
+                  pathlib.Path(envelopes) if envelopes else None, arm)
 
 
 def envelope_digest(envelope: dict) -> tuple[int, str]:
