@@ -58,7 +58,7 @@ the daily check, **Engraphy: Check for updates** runs one on demand, and
 A write the server parks for confirmation shows up as a count in the status
 bar, beside the connection indicator, and as a badge on the Engraphy activity
 bar icon. Clicking the count opens the confirm-write queue. Expired rows are
-left out of the count, since they can no longer be resolved.
+left out of the count, because an expired row cannot be resolved.
 
 Engraphy reads the queue once a minute in the background. When a new write
 arrives it raises one notification for the whole batch, with a **Review**
