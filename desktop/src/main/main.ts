@@ -397,19 +397,24 @@ function observePending(items: PendingListItem[], announceable: boolean): void {
 
 /** Bring the window forward on the review panel. */
 function openReview(): void {
+	const goToQueue = () => {
+		push('app', { type: 'navigate', to: 'confirm' });
+		void confirmReload();
+	};
 	if (!win || win.isDestroyed()) {
+		// macOS keeps running with no window. A new one has no renderer to
+		// listen yet, so the navigation waits for it to load.
 		createWindow();
 		buildMenu();
+		win?.webContents.once('did-finish-load', goToQueue);
+		return;
 	}
-	if (win) {
-		if (win.isMinimized()) {
-			win.restore();
-		}
-		win.show();
-		win.focus();
+	if (win.isMinimized()) {
+		win.restore();
 	}
-	push('app', { type: 'navigate', to: 'confirm' });
-	void confirmReload();
+	win.show();
+	win.focus();
+	goToQueue();
 }
 
 /**
