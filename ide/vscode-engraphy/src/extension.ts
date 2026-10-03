@@ -21,12 +21,18 @@ import * as crypto from 'crypto';
 import { promisify } from 'util';
 
 import { EngraphyClient, type EngraphyConnection } from './mcpClient';
-import { EngraphyToolError, type InboxItemData } from './toolResult';
+import {
+	EngraphyToolError,
+	pendingItemsFrom,
+	type InboxItemData,
+	type PendingListItem,
+} from './toolResult';
 import { STARTER_NODE_TYPES, isValidServerUrl, promoteDefaults } from './webviewMessages';
 import { ExplorerProvider } from './explorerView';
 import { ConfirmWebviewProvider } from './confirmWebview';
 import { StatsWebviewProvider } from './statsWebview';
-import { StatusBar, type AgentContext } from './status';
+import { PendingIndicator, StatusBar, type AgentContext } from './status';
+import { PendingWatch, pendingMessage } from './pendingWatch';
 import {
 	buildWriteFreshness,
 	type AgentRuntimeStatus,
@@ -51,6 +57,9 @@ const execAsync = promisify(cp.exec);
 const PROVIDER_ID = 'engraphy';
 const CONFIG_SECTION = 'engraphy';
 const DOCKER_INSTALL_DOCS = 'https://docs.docker.com/compose/install/';
+/** How often the background read of pending_list runs. */
+const PENDING_POLL_MS = 60_000;
+const PENDING_POLL_LIMIT = 50;
 
 /**
  * Current connection settings. The URL and space are ordinary settings; the
@@ -131,12 +140,104 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		const c = connection();
 		return { serverUrl: c.serverUrl, hasToken: c.token.length > 0 };
 	};
+	// ---- writes waiting for review ----
+	//
+	// One watcher shared by the background poll and the confirm panel's own
+	// reads, so the status-bar count, the view badge and the panel always agree.
+	// Only the poll announces; a panel read updates the count silently, because
+	// the user is already looking at the queue.
+	const pendingWatch = new PendingWatch();
+	const pendingIndicator = new PendingIndicator();
+	context.subscriptions.push(pendingIndicator);
+	// A different server or token is a different queue. The identity is a hash
+	// so the token itself is never held a second time.
+	let pendingIdentity = '';
+	// Bumped on every observation. A poll whose read was overtaken by a newer
+	// one (the panel re-reading after a resolve, say) is discarded, or it would
+	// re-announce a row the user has just resolved.
+	let pendingGeneration = 0;
+	let pendingPollInFlight = false;
+
+	const identityOf = (c: EngraphyConnection): string =>
+		crypto.createHash('sha256').update(`${c.serverUrl}
+${c.token}`).digest('hex');
+
+	const showPendingCount = (count: number): void => {
+		pendingIndicator.set(count);
+		confirmProvider.setBadge(
+			count > 0 ? { value: count, tooltip: pendingMessage(count) } : undefined
+		);
+	};
+
+	/** Feed one successful read in. Returns the ids to announce, if any. */
+	const observePending = (items: PendingListItem[]): string[] => {
+		const id = identityOf(connection());
+		if (id !== pendingIdentity) {
+			pendingWatch.reset();
+			pendingIdentity = id;
+		}
+		const primed = pendingWatch.primed;
+		const obs = pendingWatch.observe(items);
+		pendingGeneration++;
+		showPendingCount(obs.active);
+		// The first read of a session seeds: rows already waiting are counted,
+		// not announced.
+		return primed ? obs.fresh : [];
+	};
+
+	const reviewPending = async (): Promise<void> => {
+		await vscode.commands.executeCommand(`${ConfirmWebviewProvider.viewId}.focus`);
+		await confirmProvider.refresh();
+	};
+
+	const pollPending = async (): Promise<void> => {
+		const c = connection();
+		if (!c.serverUrl || !c.token) {
+			pendingWatch.reset();
+			pendingIdentity = '';
+			showPendingCount(0);
+			return;
+		}
+		if (pendingPollInFlight) {
+			return;
+		}
+		pendingPollInFlight = true;
+		const generation = pendingGeneration;
+		try {
+			const items = pendingItemsFrom(await client.pendingList(PENDING_POLL_LIMIT));
+			if (generation !== pendingGeneration) {
+				return;
+			}
+			const fresh = observePending(items);
+			const enabled = vscode.workspace
+				.getConfiguration(CONFIG_SECTION)
+				.get<boolean>('pendingNotifications.enabled', true);
+			if (fresh.length > 0 && enabled) {
+				// Not awaited: the toast can sit open for minutes, and the next tick
+				// must not wait on it.
+				void vscode.window
+					.showInformationMessage(`Engraphy: ${pendingMessage(fresh.length)}`, 'Review')
+					.then((choice) => {
+						if (choice === 'Review') {
+							void runSafely(output, reviewPending);
+						}
+					});
+			}
+		} catch {
+			// Silent by design: the health item already reports connection
+			// problems, and a failed read leaves the watcher as it was.
+		} finally {
+			pendingPollInFlight = false;
+		}
+	};
+
 	const confirmProvider = new ConfirmWebviewProvider(
 		context.extensionUri,
 		client,
 		output,
 		(item) => promoteItem(client, output, item),
-		connectionInfo
+		connectionInfo,
+		(items) => void observePending(items)
 	);
 	const statsProvider = new StatsWebviewProvider(
 		context.extensionUri,
@@ -245,8 +346,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// one nobody noticed.
 	void runSafely(output, async () => {
 		await refreshAll();
+		// Seeds the count even when the confirm panel has never been opened.
+		await pollPending();
 		await warnIfNoAgentPath(context, status, output);
 	});
+	const pendingTimer = setInterval(() => void pollPending(), PENDING_POLL_MS);
+	context.subscriptions.push({ dispose: () => clearInterval(pendingTimer) });
 	// First run: guide a cold install to a server. Only nags once (globalState)
 	// and only when a server isn't actually reachable — never on a working setup.
 	void maybeOfferFirstRunWalkthrough(context, client, output);

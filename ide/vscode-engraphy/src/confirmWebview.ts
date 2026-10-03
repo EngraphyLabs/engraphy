@@ -57,6 +57,8 @@ export class ConfirmWebviewProvider implements vscode.WebviewViewProvider {
 	private loading = false;
 	/** True on the very first load, so the panel can show skeletons not a spinner. */
 	private firstLoad = true;
+	/** Last badge set through setBadge, re-applied when the view is (re)created. */
+	private badge: vscode.ViewBadge | undefined;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -65,11 +67,26 @@ export class ConfirmWebviewProvider implements vscode.WebviewViewProvider {
 		/** Native authoring flow for an inbox item (payload shown read-only). */
 		private readonly promoteItem: (item: InboxItemData) => Promise<void>,
 		/** Current serverUrl + whether a token is stored, for the recovery copy. */
-		private readonly getConnectionInfo: () => { serverUrl: string; hasToken: boolean }
+		private readonly getConnectionInfo: () => { serverUrl: string; hasToken: boolean },
+		/**
+		 * Called with every SUCCESSFUL pending_list read, so the shared pending
+		 * watcher and the status-bar count agree with what this panel shows. A
+		 * failed read is not reported: it says nothing about the queue.
+		 */
+		private readonly onPendingRead?: (items: PendingListItem[]) => void
 	) {}
+
+	/** Activity-bar badge for rows waiting for review. Undefined clears it. */
+	setBadge(badge: vscode.ViewBadge | undefined): void {
+		this.badge = badge;
+		if (this.view) {
+			this.view.badge = badge;
+		}
+	}
 
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
 		this.view = webviewView;
+		webviewView.badge = this.badge;
 		webviewView.webview.options = {
 			enableScripts: true,
 			localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')],
@@ -157,6 +174,7 @@ export class ConfirmWebviewProvider implements vscode.WebviewViewProvider {
 			this.pending = pendingItemsFrom(res);
 			this.pendingError = null;
 			this.pendingRaw = null;
+			this.onPendingRead?.(this.pending);
 		} catch (e) {
 			this.pending = [];
 			this.pendingError = this.msg(e);

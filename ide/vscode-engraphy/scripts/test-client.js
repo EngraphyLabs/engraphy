@@ -17,6 +17,7 @@ const m = require('../out-test/tokenMigration.js');
 const cap = require('../out-test/capability.js');
 const ar = require('../out-test/agentRuntimes.js');
 const vc = require('../out-test/versionCheck.js');
+const pw = require('../out-test/pendingWatch.js');
 const os = require('os');
 
 let passed = 0;
@@ -183,6 +184,60 @@ check('isExpired: past expired, future not, null not', () => {
 	assert.strictEqual(t.isExpired({ expires_at: '2026-08-01T11:59:00Z' }, now), true);
 	assert.strictEqual(t.isExpired({ expires_at: '2026-08-01T12:01:00Z' }, now), false);
 	assert.strictEqual(t.isExpired({ expires_at: null }, now), false);
+});
+
+// ---- pending watcher (status-bar count + notification) --------------------
+
+function pendingRow(id, expires_at = null) {
+	return { id, payload_preview: '', candidates: [], expires_at, created_at: null };
+}
+
+check('PendingWatch: unprimed until the first successful observation', () => {
+	const watch = new pw.PendingWatch();
+	assert.strictEqual(watch.primed, false);
+	watch.observe([]);
+	assert.strictEqual(watch.primed, true);
+	watch.reset();
+	assert.strictEqual(watch.primed, false);
+});
+
+check('PendingWatch: a new id is fresh, a repeated id is not', () => {
+	const watch = new pw.PendingWatch();
+	assert.deepStrictEqual(watch.observe([pendingRow('a')]), { active: 1, fresh: ['a'] });
+	assert.deepStrictEqual(watch.observe([pendingRow('a')]), { active: 1, fresh: [] });
+	assert.deepStrictEqual(watch.observe([pendingRow('b'), pendingRow('a')]), {
+		active: 2,
+		fresh: ['b'],
+	});
+});
+
+check('PendingWatch: an expired row is neither counted nor fresh', () => {
+	const now = Date.parse('2026-08-01T12:00:00Z');
+	const watch = new pw.PendingWatch();
+	const obs = watch.observe(
+		[pendingRow('live', '2026-08-01T13:00:00Z'), pendingRow('old', '2026-08-01T11:00:00Z')],
+		now
+	);
+	assert.deepStrictEqual(obs, { active: 1, fresh: ['live'] });
+	// The same row read again after it lapses drops out of the count.
+	assert.deepStrictEqual(watch.observe([pendingRow('live', '2026-08-01T13:00:00Z')], now + 2 * 3600e3), {
+		active: 0,
+		fresh: [],
+	});
+});
+
+check('PendingWatch: a pruned id that reappears counts as fresh again', () => {
+	const watch = new pw.PendingWatch();
+	watch.observe([pendingRow('a')]);
+	watch.observe([]);
+	assert.deepStrictEqual(watch.observe([pendingRow('a')]), { active: 1, fresh: ['a'] });
+});
+
+check('pendingMessage / pendingTooltip: singular and plural', () => {
+	assert.strictEqual(pw.pendingMessage(1), '1 memory write is waiting for your review.');
+	assert.strictEqual(pw.pendingMessage(3), '3 memory writes are waiting for your review.');
+	assert.strictEqual(pw.pendingTooltip(1), '1 memory write waiting for review. Click to review.');
+	assert.strictEqual(pw.pendingTooltip(2), '2 memory writes waiting for review. Click to review.');
 });
 
 // ---- webview card view-models (host builds these) ----
