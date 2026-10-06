@@ -111,7 +111,7 @@ import {
 } from './settings';
 
 const APP_VERSION = (app.getVersion && app.getVersion()) || '0.1.0';
-const ENGRAPHY_REPO_URL = 'https://github.com/devon-clarkk/engraphy';
+const ENGRAPHY_REPO_URL = 'https://github.com/EngraphyLabs/engraphy';
 
 let win: BrowserWindow | undefined;
 

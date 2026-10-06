@@ -19,7 +19,7 @@ icon in the Activity Bar shows the confirm-write queue instead of a
 "No server connected" screen.
 
 Everything you need for the local path lives in the repo:
-<https://github.com/devon-clarkk/engraphy>
+<https://github.com/EngraphyLabs/engraphy>
 
 > Nothing here talks to a hosted service; there isn't one yet. Everything below
 > is honest about what exists today.

@@ -235,7 +235,7 @@ it, including why the walk runs at depth 2 rather than 3.
 
 ## Connect to a real server
 
-1. Bring up an Engraphy server (see [devon-clarkk/engraphy](https://github.com/devon-clarkk/engraphy), Docker compose).
+1. Bring up an Engraphy server (see [EngraphyLabs/engraphy](https://github.com/EngraphyLabs/engraphy), Docker compose).
 2. Mint a token: `engraphy-admin token create --space <space> --principal <you> --role readwrite`.
 3. In the app: **Settings** -> paste the MCP URL (keep the trailing `/mcp/`) and
    the token -> **Test connection** -> **Save & connect**.

@@ -22,14 +22,14 @@ data stays on your own machine.
 Engraphy is self-hosted, so the extension needs a server to talk to. There is no
 hosted option yet. Bringing one up locally takes two commands.
 
-**Repo: <https://github.com/devon-clarkk/engraphy>**
+**Repo: <https://github.com/EngraphyLabs/engraphy>**
 
 ### 1. Run a server
 
 Requirements: **Docker** (with Compose). Nothing else.
 
 ```bash
-git clone https://github.com/devon-clarkk/engraphy.git
+git clone https://github.com/EngraphyLabs/engraphy.git
 cd engraphy
 
 ./up.sh          # writes a .env with random passwords, starts the stack,
@@ -157,7 +157,7 @@ network. `engraphy.updateCheck.enabled` stops the daily check. Point
 information from your network.
 
 Editors that install extensions from a file can take the `.vsix` from the
-[latest release](https://github.com/devon-clarkk/engraphy/releases).
+[latest release](https://github.com/EngraphyLabs/engraphy/releases).
 
 ### Connection status
 

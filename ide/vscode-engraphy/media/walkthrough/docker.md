@@ -6,7 +6,7 @@ whole server runs on your machine; nothing is sent anywhere.
 ### 1. Get the repo
 
 ```
-git clone https://github.com/devon-clarkk/engraphy.git
+git clone https://github.com/EngraphyLabs/engraphy.git
 cd engraphy
 ```
 
@@ -92,4 +92,4 @@ checkout.
   the server is up, not that your token works. The status bar tells you that.
 
 Full setup notes, including the no-Docker path:
-<https://github.com/devon-clarkk/engraphy>
+<https://github.com/EngraphyLabs/engraphy>

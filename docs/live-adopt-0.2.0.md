@@ -32,6 +32,9 @@ there is nothing to undo.
 docker compose up -d
 ```
 
+The images for 0.3.0 and earlier are at `ghcr.io/devon-clarkk/engraphy`. Later
+releases publish to `ghcr.io/engraphylabs/engraphy`.
+
 ## 2. Keeping the previous backend
 
 The `legacy-torch` profile runs the same pinned weights through

@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for the report. Please do not file security problems here: use the
-        [security advisory form](https://github.com/devon-clarkk/engraphy/security/advisories/new)
+        [security advisory form](https://github.com/EngraphyLabs/engraphy/security/advisories/new)
         instead.
   - type: textarea
     id: what-happened

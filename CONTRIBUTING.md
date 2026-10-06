@@ -95,4 +95,4 @@ contribution is licensed on those same terms.
 ## Security
 
 Please do not open a public issue for a security problem. Report it privately
-through [GitHub's security advisory form](https://github.com/devon-clarkk/engraphy/security/advisories/new).
+through [GitHub's security advisory form](https://github.com/EngraphyLabs/engraphy/security/advisories/new).

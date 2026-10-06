@@ -97,7 +97,7 @@ kept below as a corrected alternative.
 
 The walkthrough also told you to get "a checkout of the Engraphy repo" without
 ever saying where from. Both it and the welcome step now link
-<https://github.com/devon-clarkk/engraphy>.
+<https://github.com/EngraphyLabs/engraphy>.
 
 Separately, the repo's `provision` scripts printed client settings that told you
 to paste your token into `engraphy.token`, the setting 0.5.0 deprecated. They now

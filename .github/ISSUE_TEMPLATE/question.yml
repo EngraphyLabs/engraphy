@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: >
-        The [documentation](https://github.com/devon-clarkk/engraphy/tree/main/docs)
+        The [documentation](https://github.com/EngraphyLabs/engraphy/tree/main/docs)
         covers setup, packs, the tool reference, deployment, and an end-to-end
         tutorial. If it did not answer this, the question is a fair one and the
         docs probably need it.

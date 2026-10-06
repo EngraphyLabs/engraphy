@@ -69,7 +69,7 @@ RUN python -c "from engraphy.core import embedding; print('prebaking', embedding
 # named in server.json's `packages[].identifier` and requires the value here to
 # equal server.json's `name`. The two move together, so a rename is a change to
 # both or it does not publish.
-LABEL io.modelcontextprotocol.server.name="io.github.devon-clarkk/engraphy"
+LABEL io.modelcontextprotocol.server.name="io.github.engraphylabs/engraphy"
 
 EXPOSE 8000
 
@@ -182,8 +182,8 @@ RUN mkdir -p /backups && chown engraphy:engraphy /backups
 # The admin sidecar inherits every LABEL from the `server` stage, including the
 # MCP Registry name claim. It is a Postgres-client and migration toolbox rather
 # than the MCP server, so it gives that claim up here: the published
-# ghcr.io/devon-clarkk/engraphy-admin image carries an empty value, and
-# ghcr.io/devon-clarkk/engraphy is the only image that answers to the registry
+# ghcr.io/engraphylabs/engraphy-admin image carries an empty value, and
+# ghcr.io/engraphylabs/engraphy is the only image that answers to the registry
 # name.
 LABEL io.modelcontextprotocol.server.name=""
 
