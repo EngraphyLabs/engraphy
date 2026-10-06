@@ -134,9 +134,9 @@ On a prebuilt image, pull the `-micro` tag instead of building:
 # compose.yaml
 services:
   engraphy:
-    image: ghcr.io/devon-clarkk/engraphy:<version>-micro
+    image: ghcr.io/engraphylabs/engraphy:<version>-micro
   admin:
-    image: ghcr.io/devon-clarkk/engraphy-admin:<version>-micro
+    image: ghcr.io/engraphylabs/engraphy-admin:<version>-micro
 ```
 
 **Expected duration:** about 5ms per node on this backend, so roughly 75 seconds

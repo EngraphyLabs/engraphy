@@ -875,7 +875,7 @@ async function resolveByIdCommand(
 
 // `${publisher}.${name}#${walkthroughId}` from package.json.
 const WALKTHROUGH_ID = 'engraphy.engraphy#engraphySetup';
-const REPO_URL = 'https://github.com/devon-clarkk/engraphy';
+const REPO_URL = 'https://github.com/EngraphyLabs/engraphy';
 
 /** Open the "Set up Engraphy" Getting Started walkthrough. */
 function openWalkthrough(): void {

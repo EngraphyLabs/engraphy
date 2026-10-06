@@ -16,4 +16,4 @@ When hosted Engraphy ships, this step will let you sign in and get a server URL
   (or your team) already run.
 
 To follow progress, see the project on GitHub:
-<https://github.com/devon-clarkk/engraphy>
+<https://github.com/EngraphyLabs/engraphy>

@@ -28,6 +28,6 @@ body:
       label: Before submitting
       options:
         - label: >
-            I have read the [tool reference](https://github.com/devon-clarkk/engraphy/blob/main/docs/04-tools-reference.md)
-            and the [design set](https://github.com/devon-clarkk/engraphy/blob/main/design/README.md).
+            I have read the [tool reference](https://github.com/EngraphyLabs/engraphy/blob/main/docs/04-tools-reference.md)
+            and the [design set](https://github.com/EngraphyLabs/engraphy/blob/main/design/README.md).
           required: true

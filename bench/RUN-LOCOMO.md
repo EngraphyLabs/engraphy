@@ -86,7 +86,7 @@ and read `manifest.json`, which records every call the run made.
 ## Step 1: the code
 
 ```bash
-git clone https://github.com/devon-clarkk/engraphy
+git clone https://github.com/EngraphyLabs/engraphy
 cd engraphy
 pip install -e '.[dev]'
 ```

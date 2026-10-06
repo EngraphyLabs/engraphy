@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.devon-clarkk/engraphy",
+  "name": "io.github.engraphylabs/engraphy",
   "title": "Engraphy",
   "description": "Self-hosted MCP memory server: a typed knowledge graph on Postgres 16 and pgvector.",
   "version": "0.3.0",
   "repository": {
-    "url": "https://github.com/devon-clarkk/engraphy",
+    "url": "https://github.com/EngraphyLabs/engraphy",
     "source": "github",
     "id": "1342519094"
   },
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/devon-clarkk/engraphy:0.3.0",
+      "identifier": "ghcr.io/engraphylabs/engraphy:0.3.0",
       "transport": {
         "type": "streamable-http",
         "url": "http://localhost:8000/mcp/",
@@ -53,10 +53,10 @@
       "tech.engraphy": {
         "website": "https://engraphy.tech",
         "license": "BSL-1.1, converting to Apache-2.0 on 2030-08-22",
-        "deploymentGuide": "https://github.com/devon-clarkk/engraphy/blob/main/docs/05-deployment.md",
-        "toolReference": "https://github.com/devon-clarkk/engraphy/blob/main/docs/04-tools-reference.md",
+        "deploymentGuide": "https://github.com/EngraphyLabs/engraphy/blob/main/docs/05-deployment.md",
+        "toolReference": "https://github.com/EngraphyLabs/engraphy/blob/main/docs/04-tools-reference.md",
         "requires": "Postgres 16 with pgvector, and a bearer token issued by engraphy-admin",
-        "adminImage": "ghcr.io/devon-clarkk/engraphy-admin"
+        "adminImage": "ghcr.io/engraphylabs/engraphy-admin"
       }
     }
   }

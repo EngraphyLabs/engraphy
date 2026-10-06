@@ -2,8 +2,8 @@
 
 **An MCP server giving AI agents associative memory, modelled on the human mind.**
 
-[![CI](https://github.com/devon-clarkk/engraphy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/devon-clarkk/engraphy/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/devon-clarkk/engraphy?label=release)](https://github.com/devon-clarkk/engraphy/releases/latest)
+[![CI](https://github.com/EngraphyLabs/engraphy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EngraphyLabs/engraphy/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/EngraphyLabs/engraphy?label=release)](https://github.com/EngraphyLabs/engraphy/releases/latest)
 [![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-blue)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/downloads/)
 [![Postgres 16 + pgvector](https://img.shields.io/badge/postgres-16%20%2B%20pgvector-336791)](https://github.com/pgvector/pgvector)
@@ -203,7 +203,7 @@ the arm, the models and the judge.
 Issues and pull requests are welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) covers
 getting a development database up, running the suite, what the three CI jobs
 check, and the house style. Security problems go through
-[a private advisory](https://github.com/devon-clarkk/engraphy/security/advisories/new)
+[a private advisory](https://github.com/EngraphyLabs/engraphy/security/advisories/new)
 rather than a public issue.
 
 ## License

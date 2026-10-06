@@ -8,7 +8,7 @@
 // WHY A MANIFEST RATHER THAN THE GITHUB RELEASE API
 //
 // One release stream carries three independently versioned products. The tag on
-// devon-clarkk/engraphy is the ENGINE version: at v0.2.0 the desktop app is
+// EngraphyLabs/engraphy is the ENGINE version: at v0.2.0 the desktop app is
 // 0.1.0 and this extension is 0.5.2. A client comparing itself to the newest tag
 // would read an update that does not exist, or a downgrade. The manifest states
 // each product under its own key, so a client compares like with like. It is

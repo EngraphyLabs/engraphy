@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Changed
+- The repository lives at <https://github.com/EngraphyLabs/engraphy>, in the
+  EngraphyLabs organisation. The previous address redirects to it.
+- Container images publish to `ghcr.io/engraphylabs/engraphy` and
+  `ghcr.io/engraphylabs/engraphy-admin` from the next release. The images for
+  0.3.0 and earlier stay at `ghcr.io/devon-clarkk/engraphy` and
+  `ghcr.io/devon-clarkk/engraphy-admin`. A `compose.yaml` that pins an image by
+  its full path keeps that image until you change the path.
+- The MCP Registry record is `io.github.engraphylabs/engraphy`. The server image
+  carries that name in its `io.modelcontextprotocol.server.name` label. The
+  record `io.github.devon-clarkk/engraphy` stays at version 0.3.0.
+
 ### Added
 - `packs/dev`, the pack for code work: `component` (an area of code, the anchor
   the rest attach to), `convention`, `anti_pattern`, `boundary` (off limits, or
