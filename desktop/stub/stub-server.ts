@@ -7,8 +7,11 @@
 // tools/call round-trips — the same code path a live server exercises. The tool
 // results are canned envelopes shaped to exactly what the app's pure parsers
 // expect (pendingItemsFrom / inboxItemsFrom / parseStatsResult / nodesFromSearch
-// / nodesFromTraverse). resolve_duplicate / inbox_review(discard|promote) mutate
-// in-memory state so the queue visibly shrinks when you act on it.
+// / nodesFromTraverse). resolve_duplicate (distinct|merge|discard) and
+// inbox_review(discard|promote) mutate in-memory state so the queue visibly
+// shrinks when you act on it. pending_list and resolve_duplicate follow the
+// server's expiry rules: expired rows are not listed, distinct and merge refuse
+// them, and discard drops any row at any time.
 //
 // NOT production: no auth, no persistence, single mutable process. Run with
 // `npm run stub` (listens on 127.0.0.1:8000). Never shipped in the packaged app.
@@ -177,7 +180,9 @@ function callTool(name: string, args: Record<string, unknown>): unknown {
 		case 'stats':
 			return statsEnvelope(Number(args.range_days ?? 30), args.group_by === 'user' ? 'user' : 'space');
 		case 'pending_list':
-			return { v: 1, pending: PENDING };
+			// Like the server: only rows still within expires_at, so every listed
+			// row is one resolve_duplicate can settle.
+			return { v: 1, pending: PENDING.filter((p) => !isPendingExpired(p)) };
 		case 'inbox_review': {
 			const action = String(args.action ?? 'list');
 			if (action === 'discard') {
@@ -192,11 +197,20 @@ function callTool(name: string, args: Record<string, unknown>): unknown {
 		}
 		case 'resolve_duplicate': {
 			const id = String(args.pending_id ?? '');
-			const before = PENDING.length;
-			PENDING = PENDING.filter((p) => p.id !== id);
-			if (PENDING.length === before) {
+			if (args.resolution === 'discard') {
+				// Like the server: allowed at any time, expired or not, and the
+				// envelope is the same whether or not a row was there to drop.
+				PENDING = PENDING.filter((p) => p.id !== id);
+				return { v: 1, outcome: 'discarded', pending_id: id };
+			}
+			const row = PENDING.find((p) => p.id === id);
+			if (!row) {
 				return toolError('ENGRAPHY_PENDING_NOT_FOUND', `no pending row ${id}`);
 			}
+			if (isPendingExpired(row)) {
+				return toolError('ENGRAPHY_PENDING_EXPIRED', `pending row ${id} has expired`);
+			}
+			PENDING = PENDING.filter((p) => p.id !== id);
 			return { v: 1, ok: true, resolution: args.resolution };
 		}
 		case 'briefing': {
@@ -220,6 +234,11 @@ function callTool(name: string, args: Record<string, unknown>): unknown {
 }
 
 const TOOL_NAMES = ['search', 'get', 'traverse', 'scope_list', 'stats', 'pending_list', 'inbox_review', 'resolve_duplicate', 'briefing'];
+
+function isPendingExpired(row: { expires_at?: string | null }): boolean {
+	const t = row.expires_at ? Date.parse(row.expires_at) : NaN;
+	return !Number.isNaN(t) && t <= Date.now();
+}
 
 function toolError(code: string, message: string) {
 	return { __isError: true, text: `${code}: ${message}` };
@@ -275,12 +294,15 @@ async function handleMcp(req: Request, res: Response): Promise<void> {
 // Park a new pending write, the way a write that lands in the dedup band does,
 // so the review notification can be exercised by hand:
 //   curl -X POST http://127.0.0.1:8000/__stub/pending
-app.post('/__stub/pending', (_req: Request, res: Response) => {
+// `?ttl_ms=N` sets how long the row lives (default 24 hours), so a card that
+// expires while the panel is open, and its Dismiss action, can be checked too.
+app.post('/__stub/pending', (req: Request, res: Response) => {
+	const ttl = Number(req.query.ttl_ms) > 0 ? Number(req.query.ttl_ms) : 864e5;
 	const row = {
 		id: 'pend_' + randomUUID().slice(0, 6),
 		payload_preview: 'Ada wants the weekly review moved to Thursday afternoons.',
 		candidates: [{ id: 'n_ada', title: 'Ada prefers async standups', similarity: 0.88 }],
-		expires_at: new Date(Date.now() + 864e5).toISOString(),
+		expires_at: new Date(Date.now() + ttl).toISOString(),
 		created_at: new Date().toISOString(),
 	};
 	PENDING = [row, ...PENDING];

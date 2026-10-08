@@ -73,6 +73,7 @@ export type WebviewToHost =
 	| { type: 'refresh' }
 	| { type: 'approve'; pendingId: string }
 	| { type: 'merge'; pendingId: string; mergeInto: string }
+	| { type: 'dismiss'; pendingId: string }
 	| { type: 'promote'; inboxId: string }
 	| { type: 'discard'; inboxId: string }
 	| { type: 'openWalkthrough' }
@@ -243,6 +244,10 @@ export function parseWebviewMessage(raw: unknown): WebviewToHost | null {
 			const pendingId = asString(m.pendingId);
 			const mergeInto = asString(m.mergeInto);
 			return pendingId && mergeInto ? { type: 'merge', pendingId, mergeInto } : null;
+		}
+		case 'dismiss': {
+			const pendingId = asString(m.pendingId);
+			return pendingId ? { type: 'dismiss', pendingId } : null;
 		}
 		case 'promote': {
 			const inboxId = asString(m.inboxId);

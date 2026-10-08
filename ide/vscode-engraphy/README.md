@@ -95,9 +95,10 @@ client (Streamable HTTP + bearer token):
     listed by the server's `pending_list` tool. Each row shows the payload
     preview and the candidate it collided with; **Approve (keep distinct)** and
     **Deny (merge into…)**, a pick-list of the row's own candidates, are wired
-    to `resolve_duplicate`. Expired rows (past `expires_at`) are **greyed and
-    annotated**, not hidden; `resolve_duplicate` refuses them
-    (`ENGRAPHY_PENDING_EXPIRED`), and the band footer counts them.
+    to `resolve_duplicate`. **Dismiss** drops a row without saving it, on every
+    card and at any time. A row that passes its `expires_at` while the queue is
+    open is **greyed and annotated**: Approve and Merge return
+    `ENGRAPHY_PENDING_EXPIRED` for it, and Dismiss clears it.
 - **Memory explorer**: **Search memory…** → results → expand a node to traverse
   to its linked neighbors (`search` / `traverse` / `get`). Click a node to open
   its full JSON.
@@ -120,8 +121,10 @@ string (title plus a capped body) rendered as-is. A manual **Resolve pending
 duplicate by id…** command is also available for a `pending_id` obtained
 elsewhere.
 
-`pending_list` deliberately does **not** filter expired rows, so that staleness
-stays visible in the client. It requires an Engraphy server at 0.1.0 or newer.
+`pending_list` lists the rows still within `expires_at`, so every row in the
+band is one `resolve_duplicate` can settle. Dismiss sends `resolve_duplicate`
+with `resolution: "discard"`, which the server accepts before or after expiry.
+The listing requires an Engraphy server at 0.1.0 or newer.
 
 ## Connection reference
 

@@ -11,10 +11,11 @@
 // forgetting the seen set on a network blip would announce every row again the
 // moment the server comes back.
 //
-// pending_list returns expired rows (there is no server-side sweeper), and
-// resolve_duplicate refuses them, so they are dropped before anything is
-// counted or diffed. pending_list orders newest first, so the newest rows are
-// always inside the read window.
+// Expired rows are dropped before anything is counted or diffed. pending_list
+// lists only unexpired rows, but a row can expire between the server's read and
+// this one, and an older server lists expired rows too. Only Dismiss applies to
+// such a row, so it is not something to announce. pending_list orders newest
+// first, so the newest rows are always inside the read window.
 
 import { isExpired, type PendingListItem } from './toolResult';
 

@@ -145,6 +145,15 @@ window.mountConfirm = function (ctx) {
 				'approve'
 			)
 		);
+		actions.appendChild(
+			button(
+				'btn btn-ghost',
+				'Dismiss',
+				() => action({ type: 'dismiss', pendingId: p.id }),
+				p.expired ? 'Remove this expired write from the queue' : 'Drop this write without saving it',
+				'dismiss'
+			)
+		);
 		card.appendChild(actions);
 
 		const metaBits = [];

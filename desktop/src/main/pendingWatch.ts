@@ -7,9 +7,10 @@
 //
 // Pure, so it is covered by scripts/test-client.js. The rules that keep it
 // quiet:
-//   • Expired rows are dropped before anything is counted. The server returns
-//     them (there is no sweeper) and resolve_duplicate refuses them, so they are
-//     not an action anyone can take.
+//   • Expired rows are dropped before anything is counted. pending_list lists
+//     only unexpired rows, but a row can expire between the server's read and
+//     this one, and an older server lists expired rows too. Only Dismiss
+//     applies to such a row, so it is not something to announce.
 //   • Only successful fetches are observed. A failed fetch says nothing about
 //     the queue, and treating it as empty would announce every item again the
 //     moment the server came back.

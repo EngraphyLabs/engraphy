@@ -26,6 +26,7 @@ export type ConfirmCommand =
 	| { type: 'reconnect' }
 	| { type: 'approve'; pendingId: string }
 	| { type: 'merge'; pendingId: string; mergeInto: string }
+	| { type: 'dismiss'; pendingId: string }
 	| { type: 'discard'; inboxId: string }
 	| { type: 'promoteSubmit'; inboxId: string; nodeType: string; scope: string; title: string; body: string }
 	| { type: 'openWalkthrough' }
