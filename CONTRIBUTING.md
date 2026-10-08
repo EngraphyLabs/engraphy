@@ -66,6 +66,11 @@ locally.
 Run `ruff check .` and `pytest -q` before you push and most surprises disappear.
 The linter version is pinned in `pyproject.toml`, so use the pinned one.
 
+## Releasing
+
+[RELEASING.md](RELEASING.md): the three tag namespaces, what each publishes, and
+the two namespace rules since the move to the organisation.
+
 ## House style
 
 - Match the surrounding code. The codebase comments the *reasoning* behind a
