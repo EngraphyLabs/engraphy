@@ -17,10 +17,13 @@ usage limit (the harness checkpoints every question and treats a Claude
 limit, the supervisor:
 
   1. parses the reset time from the CLI's message ("... resets 5:50pm
-     (Australia/Perth)"),
-  2. sleeps until that wall-clock time + a ~10-minute buffer (a sleeping process
-     uses no Claude usage -- only the CLI subprocess is limited, so the sleep
-     genuinely clears the window),
+     (Australia/Perth)") and uses it as a bound on how long it is willing to
+     wait, not as the moment to wake,
+  2. polls for capacity with one trivial call on the smallest model every
+     `--poll-seconds`, so it resumes within one interval of the cap actually
+     lifting instead of giving away a safety buffer on every reset. A refused
+     call costs nothing, and waiting is otherwise free: only the CLI subprocess
+     draws on the allowance,
   3. relaunches the identical command, which resumes from the checkpoint.
 
 It loops until the run completes or a safety cap of cycles is hit, logging every
@@ -261,6 +264,60 @@ def is_complete(run_dir: pathlib.Path) -> bool:
     return (run_dir / "report.md").exists() and m.get("rows_answered_but_ungraded", 1) == 0
 
 
+def capacity_probe(model: str) -> str:
+    """One trivial call: has the session cap lifted?
+
+    The cheapest question that can be asked of the allowance. It runs on the
+    smallest model and asks for one word, because what is being measured is
+    whether a call is accepted at all, not what it answers. While the cap is on,
+    the call is refused and costs nothing.
+
+    Returns "clear", "capped", or "halt" when only an operator can fix it.
+    """
+    from bench.core.providers import AuthExpired, ClaudeCLIClient, QuotaExhausted
+    try:
+        ClaudeCLIClient(model=model).complete("Answer with one word.", "Say OK.")
+        return "clear"
+    except QuotaExhausted:
+        return "capped"
+    except AuthExpired:
+        return "halt"
+    except Exception:  # noqa: BLE001 -- any other failure is not evidence of a cap
+        return "capped"
+
+
+def wait_for_capacity(log_path: pathlib.Path, budget_s: float, *, model: str,
+                      poll_s: float) -> str:
+    """Poll until the cap lifts, rather than sleeping to its stated reset.
+
+    A reset time is a promise about when capacity returns, and sleeping to it
+    plus a safety buffer gives that buffer away every single time. Polling costs
+    one refused call per interval and resumes within one interval of the real
+    reset, which is what keeps a measurement inside the window it was given.
+
+    `budget_s` bounds the wait, so an unparsed or wrong reset time cannot park a
+    run forever. Returns "clear", "halt", or "expired".
+    """
+    deadline = time.monotonic() + budget_s
+    probes = 0
+    while time.monotonic() < deadline:
+        time.sleep(poll_s)
+        probes += 1
+        verdict = capacity_probe(model)
+        if verdict == "clear":
+            _log(log_path, f"capacity is back after {probes} probe(s); resuming")
+            return "clear"
+        if verdict == "halt":
+            _log(log_path, "the CLI has no usable credentials; only `claude login` clears "
+                           "this, so the supervisor is not waiting it out")
+            return "halt"
+        if probes % 20 == 0:
+            left = (deadline - time.monotonic()) / 60.0
+            _log(log_path, f"still capped after {probes} probes; {left:.0f}m of wait budget left")
+    _log(log_path, f"wait budget of {budget_s/3600:.2f}h elapsed; relaunching anyway")
+    return "expired"
+
+
 def _log(log_path: pathlib.Path, msg: str) -> None:
     stamp = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     line = f"[{stamp}] {msg}"
@@ -286,6 +343,10 @@ def main() -> int:
     ap.add_argument("--run-dir", required=True, help="the run's checkpoint dir")
     ap.add_argument("--log", required=True, help="supervisor log file")
     ap.add_argument("--max-cycles", type=int, default=12)
+    ap.add_argument("--probe-model", default="claude-haiku-4-5-20251001",
+                    help="the model the capacity probe uses; the smallest is the point")
+    ap.add_argument("--poll-seconds", type=float, default=90.0,
+                    help="how often to ask whether the cap has lifted")
     ap.add_argument("--fallback-sleep-hours", type=float, default=4.5)
     ap.add_argument("cmd", nargs=argparse.REMAINDER,
                     help="-- then the run command, e.g. -- python -m bench.core.run ...")
@@ -364,7 +425,9 @@ def main() -> int:
             else:
                 _log(log_path, f"usage limit hit; reset time UNPARSED; "
                                f"fallback sleep {args.fallback_sleep_hours:.1f}h")
-            time.sleep(secs)
+            if wait_for_capacity(log_path, secs, model=args.probe_model,
+                                 poll_s=args.poll_seconds) == "halt":
+                return 2
             continue
 
         # Not complete, not a usage limit, not transient -> a genuine failure. Do
