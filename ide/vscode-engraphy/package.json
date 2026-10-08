@@ -77,6 +77,12 @@
           "default": "",
           "markdownDescription": "Where to read published version information. Leave empty to use `https://engraphy.tech/version.json`. Point it at your own copy to serve version information from your network.",
           "order": 6
+        },
+        "engraphy.pendingNotifications.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a notification when a memory write is waiting for your review. The status bar count is always shown. Uses the editor's notification, so the editor's Do Not Disturb mode applies to it.",
+          "order": 7
         }
       }
     },
@@ -253,7 +259,7 @@
     "watch": "node esbuild.js --watch",
     "check-types": "tsc --noEmit -p ./",
     "make-icon": "node scripts/make-icon.js",
-    "test-client": "tsc src/toolResult.ts src/webviewMessages.ts src/statsModel.ts src/connection.ts src/tokenMigration.ts src/capability.ts src/agentRuntimes.ts src/versionCheck.ts --outDir out-test --module commonjs --target es2022 --skipLibCheck --strict && node scripts/test-client.js"
+    "test-client": "tsc src/toolResult.ts src/webviewMessages.ts src/statsModel.ts src/connection.ts src/tokenMigration.ts src/capability.ts src/agentRuntimes.ts src/versionCheck.ts src/pendingWatch.ts --outDir out-test --module commonjs --target es2022 --skipLibCheck --strict && node scripts/test-client.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0"

@@ -103,6 +103,12 @@ client (Streamable HTTP + bearer token):
   its full JSON.
 - **Status bar**: requires an authenticated read before it reports connected;
   see [Connection status](#connection-status).
+- **Writes waiting for review**: a bell with a count beside the status bar
+  item and a badge on the activity-bar icon show how many pending duplicates
+  are live. Clicking the count opens the confirm-write queue. The queue is read
+  once a minute, and a new arrival raises one notification with a **Review**
+  action, using the editor's notification. Writes already waiting at startup
+  are counted without a notification.
 - **Refresh** command on both views.
 
 ## Pending-duplicate listing
@@ -142,6 +148,7 @@ the first time 0.5.0 activates.
 | `engraphy.composeWorkingDirectory` | *(empty)* | Folder with `compose.yaml` + `.env`, for **Start local server**. |
 | `engraphy.updateCheck.enabled` | `true` | Check once a day whether a newer version is published. |
 | `engraphy.updateCheck.manifestUrl` | *(empty)* | Where to read published version information. Empty uses `https://engraphy.tech/version.json`. |
+| `engraphy.pendingNotifications.enabled` | `true` | Show a notification when a memory write is waiting for your review. The status bar count is always shown. |
 
 ### Updates
 

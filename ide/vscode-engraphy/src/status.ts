@@ -41,6 +41,7 @@ import {
 	type ProviderSignal,
 	type ReachPhase,
 } from './capability';
+import { pendingTooltip } from './pendingWatch';
 
 export interface StatusConnection {
 	serverUrl: string;
@@ -220,6 +221,38 @@ export class StatusBar {
 					);
 		// Clicking a broken bar should do the thing that fixes it, not re-probe.
 		this.item.command = vm.action ? vm.action.command : 'engraphy.refresh';
+	}
+
+	dispose(): void {
+		this.item.dispose();
+	}
+}
+
+/**
+ * Count of memory writes waiting for review, as its own status-bar item.
+ *
+ * It sits directly right of the health item (priority one below it) and is
+ * separate on purpose: the health item answers whether an agent can use
+ * Engraphy, and a queue of parked writes is a different question with a
+ * different click target. Hidden whenever nothing is waiting.
+ */
+export class PendingIndicator {
+	private readonly item: vscode.StatusBarItem;
+
+	constructor() {
+		this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+		this.item.name = 'Engraphy: writes waiting for review';
+		this.item.command = 'engraphyConfirm.focus';
+	}
+
+	set(count: number): void {
+		if (count <= 0) {
+			this.item.hide();
+			return;
+		}
+		this.item.text = `$(bell-dot) ${count}`;
+		this.item.tooltip = pendingTooltip(count);
+		this.item.show();
 	}
 
 	dispose(): void {
