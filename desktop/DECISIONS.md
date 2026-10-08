@@ -652,6 +652,34 @@ overlay icon, which is not drawn.
 writes. The app sees writes made with the same token it holds, so an agent and
 the app share a queue when they share a token.
 
+## 23. Dismissing a pending write
+
+Every pending card carries **Dismiss**, which sends `resolve_duplicate` with
+`resolution: "discard"` and drops the parked write without saving it.
+
+**On every card, expired or not.** `pending_list` lists only rows still within
+`expires_at`, but a row can pass its expiry while the panel is open. Approve and
+Merge are refused for such a row, and the server accepts a discard at any time,
+so Dismiss is the one action that always applies.
+
+**Confirmed first, like inbox Discard.** A dismissed write is gone, and the
+confirmation names it. The server returns the same envelope whether or not a
+row was there, so a Dismiss that races another client's resolve is harmless.
+
+**Full strength on a greyed card.** An expired card dims its content and its
+Approve and Merge buttons, and leaves Dismiss undimmed, since it is the action
+that still applies. The smoke run checks the computed opacity.
+
+**A server without discard.** A server whose `resolution` enum predates
+`discard` answers `ENGRAPHY_VALIDATION` naming that field. `isDiscardUnsupported`
+recognises it, and the app says Dismiss needs a newer server instead of showing
+the raw refusal.
+
+**The stub follows the server.** `pending_list` filters expired rows,
+`distinct`/`merge` refuse them with `ENGRAPHY_PENDING_EXPIRED`, and `discard`
+drops any row. `POST /__stub/pending?ttl_ms=60000` parks a row that expires a
+minute later, which is how the greyed card and its Dismiss are checked by hand.
+
 ## Parity scope (what is in, what is deliberately out)
 
 **In (the read + review surface):** memory explorer (search / get / traverse),

@@ -67,6 +67,13 @@ counted without a notification. The notification uses the editor's own, so Do
 Not Disturb applies to it, and `engraphy.pendingNotifications.enabled` turns it
 off while keeping the count.
 
+### Dismiss a write from the review queue
+
+Every card in the confirm-write queue carries a **Dismiss** action, which drops
+the parked write without saving it. It works on any card, including one that
+has passed its expiry while the queue was open, and it asks for confirmation
+first. It sends `resolve_duplicate` with `resolution: "discard"`.
+
 ### Writes are checkable against the server
 
 **Engraphy: Check that writes are reaching the server** reports when memory

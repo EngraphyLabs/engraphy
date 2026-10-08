@@ -26,6 +26,7 @@ import * as path from 'path';
 import { EngraphyClient, type EngraphyConnection } from './client/mcpClient';
 import {
 	EngraphyToolError,
+	isDiscardUnsupported,
 	inboxItemsFrom,
 	pendingItemsFrom,
 	type InboxItemData,
@@ -577,9 +578,44 @@ async function resolve(pendingId: string, resolution: 'distinct' | 'merge', merg
 	} catch (e) {
 		if (e instanceof EngraphyToolError && e.code === 'ENGRAPHY_PENDING_EXPIRED') {
 			toast(
-				'That pending write has expired. Re-issue the write for a fresh confirmation window.',
+				'That pending write has expired. Dismiss it, and re-issue the write for a fresh confirmation window.',
 				'warn'
 			);
+		} else {
+			toast('Engraphy: ' + describeError(e, currentHost()).summary, 'error');
+		}
+	} finally {
+		await confirmReload();
+	}
+}
+
+// Drop a parked write without saving it. Offered on every card, expired or not:
+// the server accepts a discard at any time and returns the same envelope whether
+// or not the row still existed.
+async function onDismiss(pendingId: string): Promise<void> {
+	const item = confirmState.pending.find((p) => p.id === pendingId);
+	const label = item ? item.payload_preview.slice(0, 40) : pendingId;
+	if (!win || win.isDestroyed()) {
+		return;
+	}
+	const { response } = await dialog.showMessageBox(win, {
+		type: 'warning',
+		buttons: ['Cancel', 'Dismiss'],
+		defaultId: 1,
+		cancelId: 0,
+		message: 'Dismiss pending write?',
+		detail: '"' + label + '" will be dropped without being saved. This cannot be undone.',
+	});
+	if (response !== 1) {
+		pushConfirmState(); // clear the view's optimistic busy state
+		return;
+	}
+	try {
+		await client.resolveDuplicate(pendingId, 'discard');
+		toast('Pending write dismissed.');
+	} catch (e) {
+		if (isDiscardUnsupported(e)) {
+			toast('Dismiss needs a newer Engraphy server. Update the server to use it.', 'warn');
 		} else {
 			toast('Engraphy: ' + describeError(e, currentHost()).summary, 'error');
 		}
@@ -997,6 +1033,8 @@ async function handleMessage(channel: string, msg: unknown): Promise<void> {
 				return void resolve(cmd.pendingId, 'distinct');
 			case 'merge':
 				return void resolve(cmd.pendingId, 'merge', cmd.mergeInto);
+			case 'dismiss':
+				return void onDismiss(cmd.pendingId);
 			case 'discard':
 				return void onDiscard(cmd.inboxId);
 			case 'promoteSubmit':
@@ -2097,10 +2135,30 @@ async function runSmoke(): Promise<void> {
 		document.querySelector('.nav-item[data-nav="confirm"]').click();
 		await new Promise(r => setTimeout(r, 300));
 		const before = p.querySelectorAll('.card').length;
+		// Every pending card carries Dismiss, the one action that applies to an
+		// expired row as well as a live one.
+		const pendingCards = p.querySelectorAll('.card [data-action="approve"]').length;
+		const dismissButtons = p.querySelectorAll('.card [data-action="dismiss"]').length;
+		// Grey one card the way an expired row renders: Dismiss must stay at full
+		// strength while the rest of the card dims.
+		let expiredStyle = null;
+		const probeCard = p.querySelector('.card [data-action="dismiss"]')?.closest('.card');
+		if (probeCard) {
+			probeCard.classList.add('expired');
+			const op = (sel) => {
+				let o = 1;
+				for (let n = probeCard.querySelector(sel); n && n !== p; n = n.parentElement) {
+					o *= Number(getComputedStyle(n).opacity);
+				}
+				return o;
+			};
+			expiredStyle = { dismiss: op('[data-action="dismiss"]'), approve: op('[data-action="approve"]') };
+			probeCard.classList.remove('expired');
+		}
 		const btn = p.querySelector('.btn-approve');
 		if (btn) btn.click();
 		await new Promise(r => setTimeout(r, 1400));
-		return { before, after: p.querySelectorAll('.card').length };
+		return { before, after: p.querySelectorAll('.card').length, pendingCards, dismissButtons, expiredStyle };
 	})()`);
 	log('ENGRAPHY_SMOKE_APPROVE', approve);
 

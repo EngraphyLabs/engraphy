@@ -26,8 +26,8 @@ Light (the brand default) and dark, following the OS colour scheme:
 - **Impact & usage** — the stats dashboard (duplicates prevented, memory reused,
   answer rate, and more), with space/you and 7/14/30-day toggles.
 - **Confirm-write queue** — pending duplicates with candidate + similarity, and
-  Approve (keep distinct) / Merge into. Plus the inbox: Promote (in-app authoring
-  form) and Discard.
+  Approve (keep distinct) / Merge into / Dismiss. Plus the inbox: Promote
+  (in-app authoring form) and Discard.
 - **Review notifications**: the queue is checked every minute while the app is
   open, including when it is minimised. A count on the Confirm-write queue shows
   how many writes are waiting, and a new one raises a system notification that
@@ -133,9 +133,9 @@ each panel rendered:
 
 The `connected` scenario drives the whole review surface: search, open a record,
 follow its links, Approve, Merge, and Promote on both an item that carries a
-scope and one that does not. **Discard is not covered**: it confirms through a native
-`dialog.showMessageBox`, which blocks the main process and cannot be driven from
-the renderer, so verify that one by hand.
+scope and one that does not. **Discard and Dismiss are not covered**: they
+confirm through a native `dialog.showMessageBox`, which blocks the main process
+and cannot be driven from the renderer, so verify those by hand.
 
 Every scenario also asserts the window is not blank and nothing crashed. Add
 `--shots` to write the screenshots in `docs/`.

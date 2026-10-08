@@ -133,6 +133,14 @@
 				p.expired ? 'This row is expired, so the server will refuse the approve.' : 'Keep as a new, distinct node'
 			)
 		);
+		actions.appendChild(
+			button(
+				'btn btn-ghost btn-dismiss',
+				'Dismiss',
+				() => action({ type: 'dismiss', pendingId: p.id }),
+				p.expired ? 'Remove this expired write from the queue' : 'Drop this write without saving it'
+			)
+		);
 		card.appendChild(actions);
 
 		const metaBits = [];

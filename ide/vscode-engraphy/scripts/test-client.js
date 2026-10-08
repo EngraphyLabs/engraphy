@@ -144,6 +144,31 @@ check('resolve_duplicate: merge_into only for merge', () => {
 	});
 });
 
+check('resolve_duplicate: discard sends no merge_into', () => {
+	assert.deepStrictEqual(t.buildResolveDuplicateArgs('p1', 'discard'), {
+		pending_id: 'p1',
+		resolution: 'discard',
+	});
+	assert.deepStrictEqual(t.buildResolveDuplicateArgs('p1', 'discard', 'n9'), {
+		pending_id: 'p1',
+		resolution: 'discard',
+	});
+});
+
+check('isDiscardUnsupported: only a validation refusal naming resolution', () => {
+	// what a server older than the discard resolution answers
+	assert.strictEqual(
+		t.isDiscardUnsupported(new t.EngraphyToolError('ENGRAPHY_VALIDATION', 'resolution must be one of distinct|merge')),
+		true
+	);
+	assert.strictEqual(
+		t.isDiscardUnsupported(new t.EngraphyToolError('ENGRAPHY_VALIDATION', 'pending_id must be a uuid')),
+		false
+	);
+	assert.strictEqual(t.isDiscardUnsupported(new t.EngraphyToolError('ENGRAPHY_PENDING_EXPIRED', 'resolution')), false);
+	assert.strictEqual(t.isDiscardUnsupported(new Error('resolution must be one of distinct|merge')), false);
+});
+
 // ---- pending_list parse + expiry (new tool) ----
 check('buildPendingListArgs drops undefined', () => {
 	assert.deepStrictEqual(t.buildPendingListArgs(50), { limit: 50 });
@@ -327,6 +352,16 @@ check('parseWebviewMessage: merge requires BOTH pendingId and mergeInto', () => 
 	});
 	assert.strictEqual(w.parseWebviewMessage({ type: 'merge', pendingId: 'p1' }), null);
 	assert.strictEqual(w.parseWebviewMessage({ type: 'merge', mergeInto: 'n9' }), null);
+});
+check('parseWebviewMessage: dismiss requires its pendingId', () => {
+	assert.deepStrictEqual(w.parseWebviewMessage({ type: 'dismiss', pendingId: 'p1' }), {
+		type: 'dismiss',
+		pendingId: 'p1',
+	});
+	assert.strictEqual(w.parseWebviewMessage({ type: 'dismiss' }), null);
+	assert.strictEqual(w.parseWebviewMessage({ type: 'dismiss', pendingId: '' }), null);
+	// an inbox id is not a pending id: dismiss never falls back to it
+	assert.strictEqual(w.parseWebviewMessage({ type: 'dismiss', inboxId: 'i1' }), null);
 });
 check('parseWebviewMessage: rejects unknown type / missing id / non-object', () => {
 	assert.strictEqual(w.parseWebviewMessage({ type: 'nope' }), null);

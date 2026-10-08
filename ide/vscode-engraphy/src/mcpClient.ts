@@ -20,6 +20,7 @@ import {
 	buildTraverseArgs,
 	normalizeServerUrl,
 	parseToolResult,
+	type PendingResolution,
 	type PromoteOpts,
 	type RawToolResult,
 	type SearchOpts,
@@ -207,7 +208,7 @@ export class EngraphyClient {
 	}
 	resolveDuplicate(
 		pendingId: string,
-		resolution: 'distinct' | 'merge',
+		resolution: PendingResolution,
 		mergeInto?: string
 	): Promise<unknown> {
 		return this.call('resolve_duplicate', buildResolveDuplicateArgs(pendingId, resolution, mergeInto));

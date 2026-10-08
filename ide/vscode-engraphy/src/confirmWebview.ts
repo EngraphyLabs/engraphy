@@ -4,10 +4,13 @@
 //  • Pending duplicates — writes the server parked as needs_confirmation
 //    (`pending_list`). Each card shows the payload preview NEXT TO the candidate
 //    node(s) it collided with (title + similarity meter). Approve keeps it
-//    distinct; Merge folds it into a chosen candidate (both via
-//    resolve_duplicate). The server does NOT filter expired rows — an expired
-//    card is greyed and its actions are still offered, because the server is the
-//    authority that refuses a stale resolve (ENGRAPHY_PENDING_EXPIRED).
+//    distinct; Merge folds it into a chosen candidate; Dismiss drops it without
+//    saving (all three via resolve_duplicate). pending_list returns only rows
+//    still within expires_at, but a row can pass its expiry while the panel is
+//    open, and an older server lists expired rows too. Such a card is greyed:
+//    Approve and Merge stay offered because the server is the authority that
+//    refuses a stale resolve (ENGRAPHY_PENDING_EXPIRED), and Dismiss clears it at
+//    any time.
 //
 //  • Inbox — captured items awaiting triage (inbox_review). Promote is authoring
 //    (native input flow, payload shown read-only); Discard drops the item.
@@ -20,6 +23,7 @@ import { EngraphyClient } from './mcpClient';
 import {
 	EngraphyToolError,
 	inboxItemsFrom,
+	isDiscardUnsupported,
 	pendingItemsFrom,
 	type InboxItemData,
 	type PendingListItem,
@@ -223,6 +227,9 @@ export class ConfirmWebviewProvider implements vscode.WebviewViewProvider {
 			case 'merge':
 				await this.resolve(msg.pendingId, 'merge', msg.mergeInto);
 				return;
+			case 'dismiss':
+				await this.onDismiss(msg.pendingId);
+				return;
 			case 'promote':
 				await this.onPromote(msg.inboxId);
 				return;
@@ -258,7 +265,7 @@ export class ConfirmWebviewProvider implements vscode.WebviewViewProvider {
 			if (e instanceof EngraphyToolError && e.code === 'ENGRAPHY_PENDING_EXPIRED') {
 				void vscode.window.showWarningMessage(
 					'Engraphy: that pending write has expired and can no longer be resolved. ' +
-						'Re-issue the write to get a fresh confirmation window.'
+						'Dismiss it, and re-issue the write to get a fresh confirmation window.'
 				);
 			} else {
 				void vscode.window.showErrorMessage(`Engraphy: ${this.msg(e)}`);
@@ -267,6 +274,41 @@ export class ConfirmWebviewProvider implements vscode.WebviewViewProvider {
 		} finally {
 			// Always re-read: on success the row is gone; on failure the list still
 			// reflects server truth (e.g. the expired row stays, now visibly stale).
+			await this.reload();
+		}
+	}
+
+	/**
+	 * Drop a parked write without saving it. Offered on every card, expired or
+	 * not: the server accepts a discard at any time and returns the same envelope
+	 * whether or not the row still existed.
+	 */
+	private async onDismiss(pendingId: string): Promise<void> {
+		const item = this.pending.find((p) => p.id === pendingId);
+		const label = item ? item.payload_preview.slice(0, 40) : pendingId;
+		const ok = await vscode.window.showWarningMessage(
+			`Dismiss pending write "${label}"? It will not be saved.`,
+			{ modal: true },
+			'Dismiss'
+		);
+		if (ok !== 'Dismiss') {
+			// User cancelled: re-sync to clear the webview's optimistic busy state.
+			this.postState();
+			return;
+		}
+		try {
+			await this.client.resolveDuplicate(pendingId, 'discard');
+			void vscode.window.showInformationMessage('Engraphy: pending write dismissed.');
+		} catch (e) {
+			if (isDiscardUnsupported(e)) {
+				void vscode.window.showWarningMessage(
+					'Engraphy: Dismiss needs a newer Engraphy server. Update the server to use it.'
+				);
+			} else {
+				void vscode.window.showErrorMessage(`Engraphy: ${this.msg(e)}`);
+			}
+			this.log.appendLine(`resolve_duplicate(discard) failed: ${this.msg(e)}`);
+		} finally {
 			await this.reload();
 		}
 	}

@@ -255,12 +255,31 @@ export function isExpired(item: PendingListItem, now: number = Date.now()): bool
 }
 
 /**
+ * The three ways to settle a parked write. `discard` drops it without saving
+ * anything and works at any time, including after `expires_at`; `distinct` and
+ * `merge` need the row to be unexpired.
+ */
+export type PendingResolution = 'distinct' | 'merge' | 'discard';
+
+/**
+ * True when the server refused `resolution: "discard"` because its enum predates
+ * it: such a server answers ENGRAPHY_VALIDATION naming the `resolution` field.
+ */
+export function isDiscardUnsupported(e: unknown): boolean {
+	return (
+		e instanceof EngraphyToolError &&
+		e.code === 'ENGRAPHY_VALIDATION' &&
+		/\bresolution\b/.test(e.message)
+	);
+}
+
+/**
  * resolve_duplicate: {pending_id, resolution, merge_into?}. `merge_into` is only
  * meaningful — and only sent — when resolution === 'merge'.
  */
 export function buildResolveDuplicateArgs(
 	pendingId: string,
-	resolution: 'distinct' | 'merge',
+	resolution: PendingResolution,
 	mergeInto?: string
 ): Record<string, unknown> {
 	return compact({
