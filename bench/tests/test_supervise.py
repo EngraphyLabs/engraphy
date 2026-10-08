@@ -9,7 +9,13 @@ from __future__ import annotations
 import datetime
 import json
 
-from bench.supervise import _answer_count, classify_stop, is_complete, parse_reset
+from bench import supervise
+from bench.supervise import (
+    _answer_count,
+    classify_stop,
+    is_complete,
+    parse_reset,
+)
 
 
 def test_parse_reset_from_real_message():
@@ -93,3 +99,89 @@ def test_answer_count(tmp_path):
 
 def test_is_complete_missing_files(tmp_path):
     assert is_complete(tmp_path) is False  # no report / manifest yet
+
+
+def test_an_ingest_only_run_is_complete_without_a_report(tmp_path):
+    """Only the report phase writes report.md, so requiring that file made an
+    ingest-only pass unfinishable: the supervisor retried a store that was
+    already correct, then called it a genuine failure. Seen live 2026-10-01 on
+    the seen-split extraction A/B, after all six ingests had succeeded."""
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "phases_requested": ["ingest"], "phases_completed": ["ingest"],
+        "quota_stop": False}), encoding="utf-8")
+    assert is_complete(tmp_path)
+
+
+def test_a_phase_that_did_not_run_to_the_end_is_not_complete(tmp_path):
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "phases_requested": ["ingest", "answer"], "phases_completed": ["ingest"],
+        "quota_stop": False}), encoding="utf-8")
+    assert not is_complete(tmp_path)
+
+
+def test_a_judged_run_with_ungraded_rows_is_not_complete(tmp_path):
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "phases_requested": ["answer", "judge"], "phases_completed": ["answer", "judge"],
+        "quota_stop": False, "rows_answered_but_ungraded": 4}), encoding="utf-8")
+    assert not is_complete(tmp_path)
+
+
+def test_a_quota_stop_is_never_complete(tmp_path):
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "phases_requested": ["ingest"], "phases_completed": ["ingest"],
+        "quota_stop": True}), encoding="utf-8")
+    assert not is_complete(tmp_path)
+
+
+def test_a_run_from_before_the_phase_bookkeeping_still_uses_the_report_file(tmp_path):
+    """The published runs have no phase keys, and they must keep reading as
+    complete."""
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "quota_stop": False, "rows_answered_but_ungraded": 0}), encoding="utf-8")
+    assert not is_complete(tmp_path)
+    (tmp_path / "report.md").write_text("ok", encoding="utf-8")
+    assert is_complete(tmp_path)
+
+
+def test_the_wait_resumes_as_soon_as_a_probe_clears(tmp_path, monkeypatch):
+    """Polling exists so a reset is not waited past. Two refusals then capacity,
+    and the wait ends there rather than running to its budget."""
+    verdicts = iter(["capped", "capped", "clear"])
+    monkeypatch.setattr(supervise, "capacity_probe", lambda model: next(verdicts))
+    monkeypatch.setattr(supervise.time, "sleep", lambda s: None)
+    assert supervise.wait_for_capacity(tmp_path / "log", 3600, model="m", poll_s=0) == "clear"
+
+
+def test_the_wait_does_not_sit_out_an_expired_session(tmp_path, monkeypatch):
+    monkeypatch.setattr(supervise, "capacity_probe", lambda model: "halt")
+    monkeypatch.setattr(supervise.time, "sleep", lambda s: None)
+    assert supervise.wait_for_capacity(tmp_path / "log", 3600, model="m", poll_s=0) == "halt"
+
+
+def test_the_wait_gives_up_at_its_budget_rather_than_parking_forever(tmp_path, monkeypatch):
+    """An unparsed or wrong reset time must not hold a run indefinitely."""
+    monkeypatch.setattr(supervise, "capacity_probe", lambda model: "capped")
+    monkeypatch.setattr(supervise.time, "sleep", lambda s: None)
+    assert supervise.wait_for_capacity(tmp_path / "log", 0, model="m", poll_s=0) == "expired"
+
+
+def test_the_probe_reads_a_cap_as_capped_and_a_good_call_as_clear(monkeypatch):
+    import bench.core.providers as providers
+
+    class Fake:
+        def __init__(self, exc=None):
+            self.exc = exc
+
+        def complete(self, *a, **kw):
+            if self.exc:
+                raise self.exc
+            return "ok"
+
+    monkeypatch.setattr(providers, "ClaudeCLIClient", lambda model: Fake())
+    assert supervise.capacity_probe("m") == "clear"
+    monkeypatch.setattr(providers, "ClaudeCLIClient",
+                        lambda model: Fake(providers.QuotaExhausted("usage limit")))
+    assert supervise.capacity_probe("m") == "capped"
+    monkeypatch.setattr(providers, "ClaudeCLIClient",
+                        lambda model: Fake(providers.AuthExpired("no credentials")))
+    assert supervise.capacity_probe("m") == "halt"
