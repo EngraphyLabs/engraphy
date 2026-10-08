@@ -246,6 +246,12 @@ async function scenarioConnected() {
 			JSON.stringify(r.smoke_approve)
 		);
 		ok(
+			'connected: an expired card dims its actions but not Dismiss',
+			!!(r.smoke_approve && r.smoke_approve.expiredStyle &&
+				r.smoke_approve.expiredStyle.dismiss === 1 && r.smoke_approve.expiredStyle.approve < 1),
+			JSON.stringify(r.smoke_approve && r.smoke_approve.expiredStyle)
+		);
+		ok(
 			'connected: every pending card offers Dismiss',
 			!!(r.smoke_approve && r.smoke_approve.pendingCards > 0 &&
 				r.smoke_approve.dismissButtons === r.smoke_approve.pendingCards),

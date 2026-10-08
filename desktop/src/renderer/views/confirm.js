@@ -147,7 +147,7 @@ window.mountConfirm = function (ctx) {
 		);
 		actions.appendChild(
 			button(
-				'btn btn-ghost',
+				'btn btn-ghost btn-dismiss',
 				'Dismiss',
 				() => action({ type: 'dismiss', pendingId: p.id }),
 				p.expired ? 'Remove this expired write from the queue' : 'Drop this write without saving it',

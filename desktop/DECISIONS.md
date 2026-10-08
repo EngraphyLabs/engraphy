@@ -666,6 +666,15 @@ so Dismiss is the one action that always applies.
 confirmation names it. The server returns the same envelope whether or not a
 row was there, so a Dismiss that races another client's resolve is harmless.
 
+**Full strength on a greyed card.** An expired card dims its content and its
+Approve and Merge buttons, and leaves Dismiss undimmed, since it is the action
+that still applies. The smoke run checks the computed opacity.
+
+**A server without discard.** A server whose `resolution` enum predates
+`discard` answers `ENGRAPHY_VALIDATION` naming that field. `isDiscardUnsupported`
+recognises it, and the app says Dismiss needs a newer server instead of showing
+the raw refusal.
+
 **The stub follows the server.** `pending_list` filters expired rows,
 `distinct`/`merge` refuse them with `ENGRAPHY_PENDING_EXPIRED`, and `discard`
 drops any row. `POST /__stub/pending?ttl_ms=60000` parks a row that expires a

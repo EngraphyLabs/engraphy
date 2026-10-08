@@ -23,6 +23,7 @@ import { EngraphyClient } from './mcpClient';
 import {
 	EngraphyToolError,
 	inboxItemsFrom,
+	isDiscardUnsupported,
 	pendingItemsFrom,
 	type InboxItemData,
 	type PendingListItem,
@@ -299,7 +300,13 @@ export class ConfirmWebviewProvider implements vscode.WebviewViewProvider {
 			await this.client.resolveDuplicate(pendingId, 'discard');
 			void vscode.window.showInformationMessage('Engraphy: pending write dismissed.');
 		} catch (e) {
-			void vscode.window.showErrorMessage(`Engraphy: ${this.msg(e)}`);
+			if (isDiscardUnsupported(e)) {
+				void vscode.window.showWarningMessage(
+					'Engraphy: Dismiss needs a newer Engraphy server. Update the server to use it.'
+				);
+			} else {
+				void vscode.window.showErrorMessage(`Engraphy: ${this.msg(e)}`);
+			}
 			this.log.appendLine(`resolve_duplicate(discard) failed: ${this.msg(e)}`);
 		} finally {
 			await this.reload();

@@ -26,6 +26,7 @@ import * as path from 'path';
 import { EngraphyClient, type EngraphyConnection } from './client/mcpClient';
 import {
 	EngraphyToolError,
+	isDiscardUnsupported,
 	inboxItemsFrom,
 	pendingItemsFrom,
 	type InboxItemData,
@@ -613,7 +614,11 @@ async function onDismiss(pendingId: string): Promise<void> {
 		await client.resolveDuplicate(pendingId, 'discard');
 		toast('Pending write dismissed.');
 	} catch (e) {
-		toast('Engraphy: ' + describeError(e, currentHost()).summary, 'error');
+		if (isDiscardUnsupported(e)) {
+			toast('Dismiss needs a newer Engraphy server. Update the server to use it.', 'warn');
+		} else {
+			toast('Engraphy: ' + describeError(e, currentHost()).summary, 'error');
+		}
 	} finally {
 		await confirmReload();
 	}
@@ -2134,10 +2139,26 @@ async function runSmoke(): Promise<void> {
 		// expired row as well as a live one.
 		const pendingCards = p.querySelectorAll('.card [data-action="approve"]').length;
 		const dismissButtons = p.querySelectorAll('.card [data-action="dismiss"]').length;
+		// Grey one card the way an expired row renders: Dismiss must stay at full
+		// strength while the rest of the card dims.
+		let expiredStyle = null;
+		const probeCard = p.querySelector('.card [data-action="dismiss"]')?.closest('.card');
+		if (probeCard) {
+			probeCard.classList.add('expired');
+			const op = (sel) => {
+				let o = 1;
+				for (let n = probeCard.querySelector(sel); n && n !== p; n = n.parentElement) {
+					o *= Number(getComputedStyle(n).opacity);
+				}
+				return o;
+			};
+			expiredStyle = { dismiss: op('[data-action="dismiss"]'), approve: op('[data-action="approve"]') };
+			probeCard.classList.remove('expired');
+		}
 		const btn = p.querySelector('.btn-approve');
 		if (btn) btn.click();
 		await new Promise(r => setTimeout(r, 1400));
-		return { before, after: p.querySelectorAll('.card').length, pendingCards, dismissButtons };
+		return { before, after: p.querySelectorAll('.card').length, pendingCards, dismissButtons, expiredStyle };
 	})()`);
 	log('ENGRAPHY_SMOKE_APPROVE', approve);
 

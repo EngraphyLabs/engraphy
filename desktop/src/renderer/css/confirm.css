@@ -153,8 +153,14 @@ body {
 	border-color: var(--vscode-focusBorder);
 }
 .card.expired {
-	opacity: 0.55;
 	border-left-color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
+}
+
+/* An expired card is greyed, except Dismiss: it is the one action the server
+   still accepts for the row, so it keeps full strength. */
+.card.expired > :not(.actions),
+.card.expired .actions > :not(.btn-dismiss) {
+	opacity: 0.55;
 }
 
 .card-preview {

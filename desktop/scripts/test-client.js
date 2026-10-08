@@ -166,6 +166,20 @@ check('resolve_duplicate: discard sends no merge_into', () => {
 	});
 });
 
+check('isDiscardUnsupported: only a validation refusal naming resolution', () => {
+	// what a server older than the discard resolution answers
+	assert.strictEqual(
+		t.isDiscardUnsupported(new t.EngraphyToolError('ENGRAPHY_VALIDATION', 'resolution must be one of distinct|merge')),
+		true
+	);
+	assert.strictEqual(
+		t.isDiscardUnsupported(new t.EngraphyToolError('ENGRAPHY_VALIDATION', 'pending_id must be a uuid')),
+		false
+	);
+	assert.strictEqual(t.isDiscardUnsupported(new t.EngraphyToolError('ENGRAPHY_PENDING_EXPIRED', 'resolution')), false);
+	assert.strictEqual(t.isDiscardUnsupported(new Error('resolution must be one of distinct|merge')), false);
+});
+
 // ---- pending_list parse + expiry (new tool) ----
 check('buildPendingListArgs drops undefined', () => {
 	assert.deepStrictEqual(t.buildPendingListArgs(50), { limit: 50 });
