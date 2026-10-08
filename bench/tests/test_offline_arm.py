@@ -61,3 +61,15 @@ def test_an_arm_that_is_not_there_is_named_in_the_error(tmp_path):
     with pytest.raises(SystemExit) as caught:
         offline.load_source(make_run(tmp_path, [WIDE]), arm=CONTROL)
     assert CONTROL in str(caught.value)
+
+
+def test_an_offline_pass_baselines_against_the_arm_it_derives_from(tmp_path):
+    """A k=20 replay of the combined engine is named `<wide>/k20`, so its
+    baseline is the wide arm, not whichever arm happens to hold the question.
+    With run A carrying two arms, the fallback could pick the control arm and
+    report the replay against the wrong configuration."""
+    run = make_run(tmp_path, [WIDE, CONTROL])
+    src = offline.load_source(run, arm=WIDE)
+    object.__setattr__(src, "arm", WIDE + "/k20") if hasattr(src, "__slots__") \
+        else setattr(src, "arm", WIDE + "/k20")
+    assert src.source_row("conv-26:q0")["answer"] == f"from {WIDE}"

@@ -86,10 +86,22 @@ class Source:
         self.envelopes: dict[str, dict] = by_arm[self.arm]
 
     def source_row(self, question_id: str) -> dict | None:
-        """The run's own result for a question, under the arm being read."""
+        """The run's own result for a question, under the arm being read.
+
+        An offline pass names its arm after the source arm plus a suffix, such
+        as `.../k25/k20` or `.../k25/reference-conventions`, and the baseline
+        for its comparison is that source arm. So the longest results arm that
+        prefixes this pass's arm wins. In a run carrying two arms, taking any
+        arm that happens to hold the question would baseline a replay of the
+        combined engine against the other arm without saying so.
+        """
         row = self.results.get((self.arm, question_id))
         if row is not None:
             return row
+        prefixes = [arm for (arm, qid) in self.results
+                    if qid == question_id and self.arm.startswith(arm)]
+        if prefixes:
+            return self.results[(max(prefixes, key=len), question_id)]
         for (arm, qid), candidate in self.results.items():
             if qid == question_id and not arm.endswith(("/reference-conventions",)):
                 return candidate
