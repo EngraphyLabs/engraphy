@@ -95,6 +95,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
+      # GHCR repository paths are lowercase, and the owner is `EngraphyLabs`.
+      # The path is lowercased here, once, so the images land at
+      # ghcr.io/engraphylabs/engraphy[-admin], the identifier the registry
+      # record names.
+      - name: image path
+        id: path
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
       # One package per target rather than one package with suffixed tags:
       # `docker pull ghcr.io/<owner>/engraphy` gets the server, and
       # `<owner>/engraphy-admin` gets the sidecar, each with its own `latest`.
@@ -109,7 +117,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}${{ matrix.target == 'admin' && '-admin' || '' }}
+          images: ${{ steps.path.outputs.image }}${{ matrix.target == 'admin' && '-admin' || '' }}
           tags: |
             type=semver,pattern={{version}},suffix=${{ matrix.variant.suffix }}
             type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.variant.suffix }}
@@ -149,8 +157,9 @@ jobs:
   #
   # Authentication is GitHub Actions OIDC. The registry reads `repository_owner`
   # out of the minted token and grants that owner the `io.github.<owner>/*`
-  # namespace, so `io.github.engraphylabs/engraphy` publishes with no stored
-  # secret, no personal access token, and nothing to authorise by hand.
+  # namespace, spelled as GitHub spells the owner and matched case-sensitively,
+  # so `io.github.EngraphyLabs/engraphy` publishes with no stored secret, no
+  # personal access token, and nothing to authorise by hand.
   # `id-token: write` is what allows the token to be minted at all.
   mcp-registry:
     runs-on: ubuntu-latest
@@ -175,6 +184,25 @@ jobs:
             | .packages[0].identifier = "ghcr.io/" + ($repo | ascii_downcase) + ":" + $v
           ' server.json > server.tmp && mv server.tmp server.json
           cat server.json
+
+      # The registry verifies the image by an anonymous pull of the identifier
+      # named above. A package GHCR has not made public answers that pull with
+      # a denial, which the publish would report as a missing label. This names
+      # the real cause and the fix while the rest of the release stands, so
+      # the remedy is a package setting and a re-run of this job alone.
+      - name: the image is publicly pullable
+        run: |
+          ref="$(jq -r '.packages[0].identifier' server.json)"
+          repo="${ref#ghcr.io/}"; repo="${repo%:*}"; tag="${ref##*:}"
+          token="$(curl -sS "https://ghcr.io/token?scope=repository:${repo}:pull" | jq -r '.token // empty')"
+          accept='application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json'
+          code="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${token}" -H "Accept: ${accept}" \
+            "https://ghcr.io/v2/${repo}/manifests/${tag}")"
+          echo "anonymous pull of ${ref}: HTTP ${code}"
+          test "$code" = 200 || {
+            echo "::error::${ref} is not publicly pullable. Set the ${repo#*/} and ${repo#*/}-admin packages to public under the ${GITHUB_REPOSITORY_OWNER} organisation's Packages settings, then re-run this job."
+            exit 1; }
 
       # `releases/latest` rather than a pin, and this is the one place in this
       # repository where that is the right answer. The registry is in preview
