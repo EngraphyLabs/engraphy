@@ -69,7 +69,7 @@ RUN python -c "from engraphy.core import embedding; print('prebaking', embedding
 # named in server.json's `packages[].identifier` and requires the value here to
 # equal server.json's `name`. The two move together, so a rename is a change to
 # both or it does not publish.
-LABEL io.modelcontextprotocol.server.name="io.github.engraphylabs/engraphy"
+LABEL io.modelcontextprotocol.server.name="io.github.EngraphyLabs/engraphy"
 
 EXPOSE 8000
 

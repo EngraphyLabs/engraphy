@@ -239,6 +239,22 @@ jobs:
           test -n "$got" && test "$got" = "$want" || {
             echo "the image label and server.json name disagree"; exit 1; }
 
+      # The registry grants a GitHub Actions publisher the namespace
+      # `io.github.<repository_owner>/*`, spelled exactly as the OIDC token's
+      # `repository_owner` claim spells it, and matches it case-sensitively. The
+      # record name therefore carries the owner with its GitHub casing
+      # (`EngraphyLabs`), while the GHCR path that names the image is lowercase.
+      - name: 'guard: the MCP Registry name sits in the repository owner namespace'
+        run: |
+          name="$(python -c 'import json; print(json.load(open("server.json"))["name"])')"
+          want="io.github.${GITHUB_REPOSITORY_OWNER}/"
+          echo "server.json: $name"
+          echo "namespace:   $want*"
+          case "$name" in
+            "$want"*) ;;
+            *) echo "server.json name is outside $want*, so the registry refuses the publish"; exit 1 ;;
+          esac
+
       - name: space + pack + token (step 7)
         run: |
           docker compose --profile admin run --rm admin \
