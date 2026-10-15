@@ -1382,7 +1382,9 @@ def build_manifest(args, corpus: Corpus, arms: list[Arm], pack_meta: dict,
                                 "pack space is provisioned identically with no override.",
         "reader": reader_manifest,
         "dataset": {
-            "path": dataset.name,
+            # Relative to datasets/, which offline passes resolve it against; a
+            # file directly in datasets/ (LoCoMo) records its bare name as before.
+            "path": _dataset_path(dataset),
             "digest": dataset_digest(dataset),
             "questions_in_file": questions_in_file,
         },
@@ -1443,6 +1445,13 @@ def build_manifest(args, corpus: Corpus, arms: list[Arm], pack_meta: dict,
         "dataset_licence": DATASET_LICENCES.get(args.benchmark, "not recorded"),
         "ingest_concurrency": getattr(args, "ingest_concurrency", 1),
     }
+
+
+def _dataset_path(dataset: pathlib.Path) -> str:
+    try:
+        return dataset.resolve().relative_to((REPO / "datasets").resolve()).as_posix()
+    except ValueError:
+        return dataset.name
 
 
 DATASET_LICENCES = {
