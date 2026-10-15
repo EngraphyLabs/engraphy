@@ -35,6 +35,8 @@ read only to populate `Question.evidence` for post-hoc analysis.
 
 from __future__ import annotations
 
+import re
+from datetime import datetime
 from pathlib import Path
 
 from bench.core.corpus import (
@@ -113,6 +115,7 @@ class LongMemEvalLoader:
                     gold_answer=as_text(raw_answer, where=where) if raw_answer != "" else "",
                     evidence=evidence,
                     abstain_expected=abstain,
+                    question_date=str(item.get("question_date") or "") or None,
                 )
             )
 
@@ -175,4 +178,24 @@ def _parse_haystack(item: dict, *, where: str) -> tuple[tuple[Session, ...], tup
 
     if not sessions:
         raise CorpusError(f"{where}: 'haystack_sessions' is empty")
-    return tuple(sessions), tuple(evidence), unknown_roles
+    # Chronological, by each session's own date, as the official harness and
+    # Mem0's runner both order them. The file does not: 34 oracle questions and
+    # 211 S questions list their sessions out of date order, and ingest order is
+    # load-bearing (a knowledge update is only answerable if the store saw the
+    # old fact first). The sort is stable, so equal dates keep file order, and a
+    # session whose date does not parse sorts after every dated one.
+    order = sorted(range(len(sessions)),
+                   key=lambda i: (0, d, i) if (d := _parse_date(sessions[i].timestamp))
+                   else (1, datetime.min, i))
+    return tuple(sessions[i] for i in order), tuple(evidence), unknown_roles
+
+
+_DAY = re.compile(r"\s*\([A-Za-z]+\)\s*")
+
+
+def _parse_date(value: str | None) -> datetime | None:
+    """'2023/05/20 (Sat) 02:33' -> datetime; None when it does not parse."""
+    try:
+        return datetime.strptime(_DAY.sub(" ", value or "").strip(), "%Y/%m/%d %H:%M")
+    except ValueError:
+        return None

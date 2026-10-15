@@ -11,3 +11,6 @@
 *.vsix binary
 *.woff binary
 *.woff2 binary
+
+# Vendored upstream LongMemEval sources are pinned by sha256; never convert their line endings.
+bench/prompts/longmemeval/*.upstream* -text

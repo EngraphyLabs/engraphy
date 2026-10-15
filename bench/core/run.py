@@ -67,6 +67,7 @@ from psycopg_pool import AsyncConnectionPool
 from engraphy.core import embedding
 
 from bench.adapters.locomo import LoCoMoLoader
+from bench.adapters.longmemeval import LongMemEvalLoader
 from bench.core.answer import READER_CONTRACTS, READER_STANCES, Reader, build_reader_system
 from bench.core.diagnostics import (
     MAX_CONTEXT_NODES,
@@ -152,7 +153,7 @@ DB = os.environ.get(
 )
 APP_DB = DB.replace("postgres:engraphy@", "engraphy_app:engraphy_app_test_only@")
 
-LOADERS = {"locomo": LoCoMoLoader}
+LOADERS = {"locomo": LoCoMoLoader, "longmemeval": LongMemEvalLoader}
 # `llm_wide` is `llm` with a different extraction prompt (extract-wide.md):
 # completeness over economy, what one person says to or about another in scope
 # with both named, and a new instance of a recurring thing treated as a new
@@ -374,7 +375,7 @@ class Checkpoint:
 # ------------------------------------------------------------------------- ingest
 async def phase_ingest(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
                        pack_spaces: dict, principal: str,
-                       *, provider: str = "claude-cli") -> None:
+                       *, provider: str = "claude-cli", concurrency: int = 1) -> None:
     """Ingest each (haystack, extractor, pack) triple exactly once.
 
     Retrieval strategy plays no part here: `search_only` and
@@ -387,11 +388,11 @@ async def phase_ingest(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
             for r in ck.rows("ingest.jsonl") if r.get("done")}
     needed = sorted({(h.haystack_id, a.extractor, a.pack) for a in arms for h in corpus.haystacks})
 
-    for haystack_id, extractor_name, pack_name in needed:
+    async def one(haystack_id: str, extractor_name: str, pack_name: str) -> None:
         space_id, pack_dict = pack_spaces[pack_name]
         if (haystack_id, extractor_name, pack_name) in done:
             print(f"  [skip] {haystack_id} / {extractor_name} / {pack_name} — already ingested")
-            continue
+            return
 
         arm_space = ArmSpace(space_id, principal, extractor_name)
         scope = arm_space.scope_for(haystack_id)
@@ -430,6 +431,31 @@ async def phase_ingest(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
               f"confirm-band {row['confirm_band_rate']:.1%}, "
               f"edges {row['edges_attached']}/{row['edges_requested']}, "
               f"{row['total_seconds']:.0f}s", flush=True)
+
+    if concurrency <= 1:
+        for item in needed:
+            await one(*item)
+        return
+    # Haystacks are independent scopes, so they may ingest side by side, while
+    # each haystack's own sessions stay strictly in order inside
+    # `ingest_haystack`. A usage cap in any one stops them all: an unfinished
+    # haystack has no row, so a resume clears its partial scope and ingests it
+    # again from the start.
+    gate = asyncio.Semaphore(concurrency)
+
+    async def gated(item: tuple) -> None:
+        async with gate:
+            await one(*item)
+
+    tasks = [asyncio.create_task(gated(item)) for item in needed]
+    try:
+        for finished in asyncio.as_completed(tasks):
+            await finished
+    except BaseException:
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
 
 
 def _client_for(role: str, provider: str):
@@ -1414,9 +1440,17 @@ def build_manifest(args, corpus: Corpus, arms: list[Arm], pack_meta: dict,
             "claims are not made."
         ),
         "seeds": {"question_order": "dataset order (no sampling within a conversation)"},
-        "dataset_licence": "CC BY-NC 4.0 — internal measurement only; commercial "
-                           "publication is the project owner's open question",
+        "dataset_licence": DATASET_LICENCES.get(args.benchmark, "not recorded"),
+        "ingest_concurrency": getattr(args, "ingest_concurrency", 1),
     }
+
+
+DATASET_LICENCES = {
+    "locomo": "CC BY-NC 4.0 — internal measurement only; commercial "
+              "publication is the project owner's open question",
+    "longmemeval": "MIT (xiaowu0162/longmemeval-cleaned on Hugging Face, and the "
+                   "xiaowu0162/LongMemEval repository)",
+}
 
 
 def _role_models_manifest(args) -> dict:
@@ -1544,6 +1578,10 @@ async def main() -> int:
                          "subject, the fact asked for and the memory stating it on a CHECK "
                          "line before the ANSWER line; 'direct' is the single-line reply")
     ap.add_argument("--calibration-sample", type=int, default=40)
+    ap.add_argument("--ingest-concurrency", type=int, default=1,
+                    help="haystacks ingested side by side. Each haystack's sessions "
+                         "stay strictly sequential; 1 (default) is the LoCoMo path, "
+                         "one haystack after another. Recorded in the manifest.")
     ap.add_argument("--provider", default="claude-cli", choices=sorted(PROVIDERS),
                     help="which route the extractor, reader and adjudicator run on. "
                          "'claude-cli' needs a Claude subscription and the `claude` "
@@ -1644,7 +1682,8 @@ async def main() -> int:
         if "ingest" in phases:
             print("\n== ingest ==")
             await phase_ingest(pool, ck, corpus, arms, pack_spaces, "bench",
-                               provider=args.provider)
+                               provider=args.provider,
+                               concurrency=args.ingest_concurrency)
         if "answer" in phases:
             print("\n== answer ==")
             await phase_answer(pool, ck, corpus, arms, pack_spaces, "bench",

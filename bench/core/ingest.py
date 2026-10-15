@@ -25,6 +25,7 @@ number under every policy.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -365,7 +366,10 @@ async def ingest_haystack(
             prior_titles=tuple(prior_titles[-200:]),
         )
         for window in windows:
-            result: ExtractResult = extractor.extract(window)
+            # In a thread: the extractor is a blocking model call, and holding the
+            # event loop would serialise haystacks meant to ingest side by side.
+            # Within this haystack the order is unchanged, one window at a time.
+            result: ExtractResult = await asyncio.to_thread(extractor.extract, window)
             stats.ingest_input_tokens += result.input_tokens
             stats.ingest_output_tokens += result.output_tokens
 

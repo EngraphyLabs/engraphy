@@ -492,7 +492,10 @@ class Reader:
         blob = json.dumps(retrieval.envelope)
         digest = hashlib.sha256(blob.encode("utf-8")).hexdigest()
         memory = render_envelope(retrieval.envelope)
-        user = f"Memory:\n{memory}\n\nQuestion: {question.text}"
+        # A suite that states when the question is asked (LongMemEval) gets that
+        # date as a line of its own; LoCoMo states none, so its prompt is unchanged.
+        asked = f"Current date: {question.question_date}\n" if question.question_date else ""
+        user = f"Memory:\n{memory}\n\n{asked}Question: {question.text}"
 
         try:
             resp = self.client.complete(

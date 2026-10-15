@@ -143,6 +143,11 @@ class Question:
     gold_answer: str
     evidence: tuple[str, ...] = ()
     abstain_expected: bool = False
+    # When the question is asked, for suites that state it (LongMemEval's
+    # `question_date`). Relative time in a question ("two weeks ago") means
+    # nothing without it, so the reader is shown it. None for LoCoMo, whose
+    # questions carry no date, which leaves its reader prompt byte-identical.
+    question_date: str | None = None
 
     def __post_init__(self) -> None:
         if not self.question_id:
