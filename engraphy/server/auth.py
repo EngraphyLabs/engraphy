@@ -68,6 +68,44 @@ _WINDOW_SECONDS = 60.0
 _FAIL_THRESHOLD = 10
 _FAIL_WINDOW_SECONDS = 60.0
 
+# How many distinct keys RateLimiter and FailureTracker each hold at once.
+#
+# Both are in-process dicts of {key: sliding window}, and the key is chosen by
+# the caller rather than by this process: a source address for FailureTracker,
+# a token id for RateLimiter. FailureTracker is also consulted BEFORE the bearer
+# is resolved (app.py's BearerAuthMiddleware checks the ban first), so its key
+# space is reachable without any credential at all. A window that empties
+# carries no state worth keeping, so each tracker drops a key as soon as its
+# window is empty and holds no more than this many keys at once, evicting the
+# key whose newest event is oldest. Both bounds matter: the first keeps a steady
+# stream of distinct keys from accumulating entries that will never be read
+# again, the second keeps one burst from doing it inside a single window.
+#
+# Sized well above any real client count for a single-process instance (design
+# /03: one process serves the whole instance), so eviction is a backstop against
+# a key space being walked rather than something a deployment meets in normal
+# use. Evicting a window only ever forgives -- the same direction a restart
+# already resets both trackers in -- so the bound can never over-limit a caller
+# or ban one that the window would not have banned.
+_MAX_TRACKED_KEYS = 8192
+
+
+def _sweep(windows: dict, cutoff: float, cap: int) -> None:
+    """Drop every window with nothing newer than `cutoff`, then, if more than
+    `cap` remain, those whose newest event is oldest.
+
+    Shared by both trackers below: each holds {key: deque of timestamps} keyed
+    on caller-supplied input, so neither may grow without a bound. Called only
+    when a tracker is already over `cap`, which keeps the ordinary path a dict
+    lookup and makes this linear pass amortized rather than per-request."""
+    for key in [k for k, window in windows.items() if not window or window[-1] <= cutoff]:
+        del windows[key]
+    overflow = len(windows) - cap
+    if overflow <= 0:
+        return
+    for key in sorted(windows, key=lambda k: windows[k][-1])[:overflow]:
+        del windows[key]
+
 
 class Unauthorized(Exception):
     """Transport-level 401: no bearer, unknown hash, or revoked token. Deliberately
@@ -258,8 +296,9 @@ class RateLimiter:
     windows, which only ever forgives, never over-limits. Separate read/write buckets
     so a burst of reads can't starve a write and vice versa."""
 
-    def __init__(self, now=time.monotonic):
+    def __init__(self, now=time.monotonic, max_tracked_keys: int = _MAX_TRACKED_KEYS):
         self._now = now
+        self._max_tracked_keys = max_tracked_keys
         self._events: dict[tuple[str, str], deque] = defaultdict(deque)
 
     def check(self, token_id: str, kind: str, read_limit: int = DEFAULT_READ_PER_MIN,
@@ -268,8 +307,13 @@ class RateLimiter:
         with retry_after_ms if it would exceed the window's limit."""
         limit = write_limit if kind == "write" else read_limit
         now = self._now()
-        bucket = self._events[(token_id, kind)]
         cutoff = now - _WINDOW_SECONDS
+        # Before the bucket is fetched, so a sweep cannot drop the very window
+        # this call is about to append to (defaultdict would then re-create it
+        # empty, forgiving a window that had not expired).
+        if len(self._events) > self._max_tracked_keys:
+            _sweep(self._events, cutoff, self._max_tracked_keys)
+        bucket = self._events[(token_id, kind)]
         while bucket and bucket[0] <= cutoff:
             bucket.popleft()
         if len(bucket) >= limit:
@@ -288,24 +332,40 @@ class FailureTracker:
     the window's length -- turning token guessing into a slow, loud loop."""
 
     def __init__(self, threshold: int = _FAIL_THRESHOLD,
-                 window_seconds: float = _FAIL_WINDOW_SECONDS, now=time.monotonic):
+                 window_seconds: float = _FAIL_WINDOW_SECONDS, now=time.monotonic,
+                 max_tracked_keys: int = _MAX_TRACKED_KEYS):
         self._threshold = threshold
         self._window = window_seconds
         self._now = now
-        self._fails: dict[str, deque] = defaultdict(deque)
+        self._max_tracked_keys = max_tracked_keys
+        self._fails: dict[str, deque] = {}
 
-    def _prune(self, key: str, now: float) -> None:
-        bucket = self._fails[key]
+    def _window_for(self, key: str, now: float) -> deque:
+        """`key`'s failures still inside the window, pruned. Returns an empty
+        deque for a key being asked about rather than recorded against, and
+        drops a key whose window has emptied -- a plain dict, not a defaultdict,
+        so the common case (is_banned on a source that has never failed) reads
+        the tracker without writing to it."""
+        bucket = self._fails.get(key)
+        if bucket is None:
+            return deque()
         cutoff = now - self._window
         while bucket and bucket[0] <= cutoff:
             bucket.popleft()
+        if not bucket:
+            del self._fails[key]
+        return bucket
 
     def is_banned(self, key: str) -> bool:
-        now = self._now()
-        self._prune(key, now)
-        return len(self._fails[key]) >= self._threshold
+        return len(self._window_for(key, self._now())) >= self._threshold
 
     def record_failure(self, key: str) -> None:
         now = self._now()
-        self._prune(key, now)
-        self._fails[key].append(now)
+        bucket = self._window_for(key, now)
+        if not bucket:
+            # Recording the first failure for this key is the only path that adds
+            # one, so it is the only one that has to make room for it.
+            if len(self._fails) >= self._max_tracked_keys:
+                _sweep(self._fails, now - self._window, self._max_tracked_keys - 1)
+            self._fails[key] = bucket
+        bucket.append(now)
