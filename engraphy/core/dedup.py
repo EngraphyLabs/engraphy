@@ -1228,9 +1228,19 @@ async def resolve_duplicate(
         cur = conn.cursor()
         thresholds, floor = await _resolve_config(cur, space_id, thresholds, resonance_floor)
 
+        # Space AND author, explicitly, like every other statement this module
+        # aims at pending_writes (discard_pending, sweep_expired_pending, and
+        # core.pending's list): pending_writes_read/_delete (0008, 0011) already
+        # restrict both the read and the DELETE below to the caller's own rows,
+        # and the explicit WHERE keeps the pair correct on a connection that
+        # bypasses RLS as well -- which the operator pool `engraphy-admin space
+        # import` resolves parked writes on is. A row belonging to another author
+        # reads as absent, the same ENGRAPHY_NOT_FOUND an unknown id gets (07:
+        # existence is information).
         await cur.execute(
-            "SELECT payload, expires_at FROM pending_writes WHERE id = %s AND space_id = %s",
-            (pending_id, space_id),
+            "SELECT payload, expires_at FROM pending_writes "
+            "WHERE id = %s AND space_id = %s AND author_principal = %s",
+            (pending_id, space_id, principal),
         )
         row = await cur.fetchone()
         if row is None:
@@ -1301,7 +1311,11 @@ async def resolve_duplicate(
                 (space_id, payload["type"], node_id_for_log, merge_into, similarity, log_band, principal),
             )
 
-        await cur.execute("DELETE FROM pending_writes WHERE id = %s", (pending_id,))
+        await cur.execute(
+            "DELETE FROM pending_writes "
+            "WHERE id = %s AND space_id = %s AND author_principal = %s",
+            (pending_id, space_id, principal),
+        )
 
     # Usage metric (design/03 §stats): a resolution that INSERTED a new node
     # (the `distinct` path that did not find a fresh twin) counts as
