@@ -12,7 +12,8 @@
 -- flag for the E3 deploy docs" (referring specifically to the
 -- schema_migrations grant /healthz depends on). Keep this file's GRANT list
 -- in sync with conftest.py's _RLS_TABLES / _READ_ONLY_TABLES /
--- _UNGATED_WRITE_TABLES / _DELETE_TABLES if the schema's table set changes.
+-- _UNGATED_WRITE_TABLES / _APPEND_ONLY_TABLES / _DELETE_TABLES if the
+-- schema's table set changes.
 --
 -- Usage (cloud/compose profile -- runs in the `admin` sidecar, which carries
 -- psql; nothing needs to be installed on the host, and postgres needs no
@@ -81,7 +82,20 @@ GRANT DELETE ON pending_writes TO engraphy_app;
 GRANT SELECT ON spaces, node_types, edge_types, edge_rules, config TO engraphy_app;
 
 -- Not RLS-covered (instance-level / append-only audit).
-GRANT SELECT, INSERT, UPDATE ON api_tokens, audit_log TO engraphy_app;
+--
+-- api_tokens takes UPDATE: resolve_token stamps last_used_at on every request,
+-- and `token revoke` sets revoked.
+GRANT SELECT, INSERT, UPDATE ON api_tokens TO engraphy_app;
+
+-- audit_log takes SELECT and INSERT only. Every one of the engine's five
+-- audit_log statements is an INSERT (core.dedup, core.search, core.briefing,
+-- server/tools/admin, admin/addenda), so append-only is what the role needs to
+-- do its job, and withholding UPDATE is what makes the trail's own history
+-- unrewritable by the process that writes it. REVOKE as well as GRANT: this
+-- script is idempotent and re-run after every migration, so it has to converge
+-- a cluster provisioned under a wider grant rather than only a fresh one.
+GRANT SELECT, INSERT ON audit_log TO engraphy_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON audit_log FROM engraphy_app;
 
 GRANT EXECUTE ON FUNCTION engraphy_readable_scopes() TO engraphy_app;
 GRANT EXECUTE ON FUNCTION engraphy_writable_scopes() TO engraphy_app;

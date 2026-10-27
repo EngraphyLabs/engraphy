@@ -114,13 +114,16 @@ def _ensure_role(conn) -> None:
     )
     rls = "nodes, edges, scopes, scope_grants, principals, pending_writes, inbox, dedup_log"
     ro = "spaces, node_types, edge_types, edge_rules, config"
-    ungated = "api_tokens, audit_log"
+    ungated = "api_tokens"
+    append_only = "audit_log"
     cur.execute(f"GRANT CONNECT ON DATABASE {conn.info.dbname} TO {APP_ROLE}")
     cur.execute(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE}")
     cur.execute(f"GRANT SELECT, INSERT, UPDATE ON {rls} TO {APP_ROLE}")
     cur.execute(f"GRANT DELETE ON pending_writes TO {APP_ROLE}")
     cur.execute(f"GRANT SELECT ON {ro} TO {APP_ROLE}")
     cur.execute(f"GRANT SELECT, INSERT, UPDATE ON {ungated} TO {APP_ROLE}")
+    cur.execute(f"GRANT SELECT, INSERT ON {append_only} TO {APP_ROLE}")
+    cur.execute(f"REVOKE UPDATE, DELETE, TRUNCATE ON {append_only} FROM {APP_ROLE}")
     cur.execute(f"GRANT EXECUTE ON FUNCTION engraphy_readable_scopes() TO {APP_ROLE}")
     cur.execute(f"GRANT EXECUTE ON FUNCTION engraphy_writable_scopes() TO {APP_ROLE}")
     cur.execute(f"GRANT EXECUTE ON FUNCTION engraphy_validate_attrs(jsonb, jsonb) TO {APP_ROLE}")
