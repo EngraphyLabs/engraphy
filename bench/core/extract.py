@@ -222,6 +222,7 @@ class LLMExtractor:
         effort: str = "high",
         max_tokens: int = 16000,
         retain_source_text: bool = LLM_RETAIN_SOURCE_TEXT,
+        max_prompt_chars: int | None = None,
     ) -> None:
         from bench.core.llm import load_prompt
 
@@ -235,8 +236,63 @@ class LLMExtractor:
         self.schema = build_extraction_schema(pack)
         self._node_types = dict(pack.get("node_types") or {})
         self._edge_types = tuple(sorted((pack.get("edge_types") or {}).keys()))
+        # Opt-in: the longest rendered window this extractor sends in one call.
+        # None (the default, and every LoCoMo and oracle run) sends every window
+        # whole. On the Claude CLI route a structured-output prompt travels on the
+        # command line, which Windows caps near 32 KB; a window rendered past the
+        # budget first drops its oldest prior titles, then is split in two, and the
+        # halves' drafts are merged. `windows_split` and `titles_trimmed` count it.
+        self.max_prompt_chars = max_prompt_chars
+        self.windows_split = 0
+        self.titles_trimmed = 0
+        self._split_index = 1_000_000
+
+    def _render(self, window: ExtractWindow) -> str:
+        return _render_window(window, self._node_types, self._edge_types,
+                              show_turn_ids=self.retain_source_text)
 
     def extract(self, window: ExtractWindow) -> ExtractResult:
+        if self.max_prompt_chars and len(self._render(window)) > self.max_prompt_chars:
+            return self._extract_within_budget(window)
+        return self._extract_one(window)
+
+    def _extract_within_budget(self, window: ExtractWindow) -> ExtractResult:
+        import dataclasses
+
+        budget = self.max_prompt_chars
+        titles = list(window.prior_titles)
+        while titles and len(self._render(dataclasses.replace(
+                window, prior_titles=tuple(titles)))) > budget:
+            titles.pop(0)  # the oldest title goes first; recent ones carry updates
+            self.titles_trimmed += 1
+        window = dataclasses.replace(window, prior_titles=tuple(titles))
+        if len(self._render(window)) <= budget:
+            return self._extract_one(window)
+
+        self.windows_split += 1
+        if len(window.turns) > 1:
+            mid = len(window.turns) // 2
+            parts = [window.turns[:mid], window.turns[mid:]]
+        else:
+            # One turn too long for any window: its text is cut in two, each half
+            # keeping the turn's id, so provenance still points at the right turn.
+            turn = window.turns[0]
+            cut = len(turn.text) // 2
+            parts = [(dataclasses.replace(turn, text=turn.text[:cut]),),
+                     (dataclasses.replace(turn, text=turn.text[cut:]),)]
+        results = []
+        for part in parts:
+            self._split_index += 1
+            results.append(self.extract(dataclasses.replace(
+                window, turns=tuple(part), window_index=self._split_index)))
+        return ExtractResult(
+            nodes=tuple(n for r in results for n in r.nodes),
+            edges=tuple(e for r in results for e in r.edges),
+            input_tokens=sum(r.input_tokens for r in results),
+            output_tokens=sum(r.output_tokens for r in results),
+        )
+
+    def _extract_one(self, window: ExtractWindow) -> ExtractResult:
         from bench.core.llm import LLMError
         from bench.core.providers import AuthExpired, QuotaExhausted
 

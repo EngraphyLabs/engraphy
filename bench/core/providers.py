@@ -474,6 +474,13 @@ class ClaudeCLIClient:
             "--disallowed-tools", "Bash Edit Write Read Glob Grep WebFetch WebSearch",
             "--strict-mcp-config",
         ]
+        if os.environ.get("ENGRAPHY_BENCH_CLI_ISOLATE_SETTINGS") == "1":
+            # Opt-in. Without it the CLI loads the operator's user-level CLAUDE.md
+            # into every call, so its instructions reach the extractor, reader and
+            # judge (measured 2026-10-27). Off by default so earlier runs stay
+            # reproducible as they ran; on, recorded in the manifest, for new ones.
+            # The account email still reaches the model either way.
+            rest += ["--setting-sources", ""]
         if not use_stdin:
             rest.insert(1, user)  # prompt as the argument to -p
             rest += ["--json-schema", json.dumps(schema)]

@@ -159,8 +159,11 @@ LOADERS = {"locomo": LoCoMoLoader, "longmemeval": LongMemEvalLoader}
 # with both named, and a new instance of a recurring thing treated as a new
 # fact. It is a separate extractor name, not a flag, so it takes its own scope
 # and its own arm_id and can never be confused with `llm` in a manifest.
-EXTRACTORS = ("verbatim", "llm", "llm_wide")
-EXTRACT_PROMPTS = {"llm": "extract.md", "llm_wide": "extract-wide.md"}
+EXTRACTORS = ("verbatim", "llm", "llm_wide", "llm_wide_asst")
+# `llm_wide_asst` is an experimental arm, never a default: `llm_wide` plus one
+# section that keeps what an AI assistant told the user (extract-wide-assistant.md).
+EXTRACT_PROMPTS = {"llm": "extract.md", "llm_wide": "extract-wide.md",
+                   "llm_wide_asst": "extract-wide-assistant.md"}
 POLICIES = ("always_distinct", "llm_adjudicate")
 JUDGE_PROVIDERS = ("gemini", "claude", "openai")
 
@@ -375,7 +378,8 @@ class Checkpoint:
 # ------------------------------------------------------------------------- ingest
 async def phase_ingest(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
                        pack_spaces: dict, principal: str,
-                       *, provider: str = "claude-cli", concurrency: int = 1) -> None:
+                       *, provider: str = "claude-cli", concurrency: int = 1,
+                       max_prompt_chars: int | None = None) -> None:
     """Ingest each (haystack, extractor, pack) triple exactly once.
 
     Retrieval strategy plays no part here: `search_only` and
@@ -404,7 +408,8 @@ async def phase_ingest(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
         if cleared:
             print(f"  [reset] {scope} — dropped {cleared} rows from an incomplete ingest")
 
-        extractor = _build_extractor(extractor_name, pack_dict, provider)
+        extractor = _build_extractor(extractor_name, pack_dict, provider,
+                                     max_prompt_chars=max_prompt_chars)
         policy = _build_policy(next(a.policy for a in arms
                                     if a.extractor == extractor_name and a.pack == pack_name),
                                provider)
@@ -425,7 +430,9 @@ async def phase_ingest(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
         row = stats.as_dict()
         row.update({"extractor": extractor_name, "pack": pack_name, "scope_id": scope,
                     "space_id": space_id, "done": True,
-                    "sessions": len(haystack.sessions), "turns": haystack.turn_count})
+                    "sessions": len(haystack.sessions), "turns": haystack.turn_count,
+                    "windows_split": getattr(extractor, "windows_split", 0),
+                    "titles_trimmed": getattr(extractor, "titles_trimmed", 0)})
         ck.append("ingest.jsonl", row)
         print(f"           {row['drafts']} drafts → {row['nodes_written']} nodes, "
               f"confirm-band {row['confirm_band_rate']:.1%}, "
@@ -470,13 +477,15 @@ def _client_for(role: str, provider: str):
     return ClaudeCLIClient(model=ROLE_MODELS[role]["model"])
 
 
-def _build_extractor(name: str, pack: dict, provider: str = "claude-cli"):
+def _build_extractor(name: str, pack: dict, provider: str = "claude-cli", *,
+                     max_prompt_chars: int | None = None):
     """The arm's extractor name selects the prompt, which is what makes
     `llm_wide` a different extractor rather than a second name for `llm`."""
     if name == "verbatim":
         return VerbatimExtractor()
     return LLMExtractor(_client_for("extractor", provider), pack,
-                        prompt_name=EXTRACT_PROMPTS[name])
+                        prompt_name=EXTRACT_PROMPTS[name],
+                        max_prompt_chars=max_prompt_chars)
 
 
 def _build_policy(name: str, provider: str = "claude-cli"):
@@ -1371,6 +1380,7 @@ def build_manifest(args, corpus: Corpus, arms: list[Arm], pack_meta: dict,
         "git_tree_dirty": _git_dirty(),
         "git_branch": _branch(),
         "transport": "in-process (engraphy.core), per design/09 §in-process decision",
+        "cli_settings_isolated": os.environ.get("ENGRAPHY_BENCH_CLI_ISOLATE_SETTINGS") == "1",
         "principal": "bench",
         # One space PER PACK (node_types are space-scoped). Each pack's shipped
         # file hash is recorded so "we ran the shipped pack" is verifiable; the
@@ -1444,6 +1454,7 @@ def build_manifest(args, corpus: Corpus, arms: list[Arm], pack_meta: dict,
         "seeds": {"question_order": "dataset order (no sampling within a conversation)"},
         "dataset_licence": DATASET_LICENCES.get(args.benchmark, "not recorded"),
         "ingest_concurrency": getattr(args, "ingest_concurrency", 1),
+        "max_prompt_chars": getattr(args, "max_prompt_chars", None),
     }
 
 
@@ -1587,6 +1598,11 @@ async def main() -> int:
                          "subject, the fact asked for and the memory stating it on a CHECK "
                          "line before the ANSWER line; 'direct' is the single-line reply")
     ap.add_argument("--calibration-sample", type=int, default=40)
+    ap.add_argument("--max-prompt-chars", type=int, default=None,
+                    help="opt-in: the longest rendered extraction window sent in one "
+                         "call; longer windows drop their oldest prior titles, then "
+                         "split. Off by default, as in every LoCoMo and oracle run. "
+                         "Recorded in the manifest.")
     ap.add_argument("--ingest-concurrency", type=int, default=1,
                     help="haystacks ingested side by side. Each haystack's sessions "
                          "stay strictly sequential; 1 (default) is the LoCoMo path, "
@@ -1692,7 +1708,8 @@ async def main() -> int:
             print("\n== ingest ==")
             await phase_ingest(pool, ck, corpus, arms, pack_spaces, "bench",
                                provider=args.provider,
-                               concurrency=args.ingest_concurrency)
+                               concurrency=args.ingest_concurrency,
+                               max_prompt_chars=args.max_prompt_chars)
         if "answer" in phases:
             print("\n== answer ==")
             await phase_answer(pool, ck, corpus, arms, pack_spaces, "bench",

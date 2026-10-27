@@ -21,6 +21,8 @@ The conventions and every difference from upstream are in
 from __future__ import annotations
 
 import argparse
+import os
+import pathlib
 import sys
 
 from bench import offline
@@ -39,12 +41,22 @@ def main() -> int:
     ap.add_argument("--concurrency", type=int, default=3)
     ap.add_argument("--judge-concurrency", type=int, default=4)
     ap.add_argument("--arm", help="which arm of the run to read, when it has more than one")
+    ap.add_argument("--answers", help="with --reader engraphy: grade the answers in this "
+                    "results.jsonl (a replay under another reader stance) instead of the "
+                    "run's own; requires --name")
+    ap.add_argument("--name", help="output directory name under the run, default "
+                    "'official' or 'official-reader'")
     args = ap.parse_args()
+    if args.answers and (args.reader != "engraphy" or not args.name):
+        raise SystemExit("--answers needs --reader engraphy and a --name")
+    replayed = {}
+    if args.answers:
+        replayed = {r["question_id"]: r for r in harness.load_rows(pathlib.Path(args.answers))}
 
     src = offline.load_source(args.run_dir, arm=args.arm)
     if src.manifest.get("benchmark") != "longmemeval":
         raise SystemExit("this pass grades LongMemEval runs only")
-    name = "official" if args.reader == "engraphy" else "official-reader"
+    name = args.name or ("official" if args.reader == "engraphy" else "official-reader")
     out = src.dir / name
     ck = harness.Checkpoint(out)
     reader_model = harness.ROLE_MODELS["reader"]["model"]
@@ -59,6 +71,7 @@ def main() -> int:
         "source_engine_git_sha": src.manifest.get("engine_git_sha"),
         "engine_git_sha": harness._git_sha(),
         "git_tree_dirty": harness._git_dirty(),
+        "cli_settings_isolated": os.environ.get("ENGRAPHY_BENCH_CLI_ISOLATE_SETTINGS") == "1",
         "arm": arm,
         "dataset": src.manifest.get("dataset"),
         "haystacks": src.manifest.get("haystacks"),
@@ -66,7 +79,8 @@ def main() -> int:
         "role_models": {
             "reader": ({"provider": "claude-cli", "model": reader_model}
                        if args.reader == "official"
-                       else {"source": "the run's own reader answers"}),
+                       else {"source": (f"replayed answers from {args.answers}"
+                                        if args.answers else "the run's own reader answers")}),
             "judge": {"provider": "claude-cli", "model": judge_model},
         },
         "conventions": conventions_manifest(reader=args.reader),
@@ -87,7 +101,7 @@ def main() -> int:
                 "category": q.category, "abstain_expected": q.abstain_expected,
                 "envelope_bytes": size, "envelope_sha256": digest}
         if args.reader == "engraphy":
-            row = src.source_row(q.question_id)
+            row = replayed.get(q.question_id) if args.answers else src.source_row(q.question_id)
             if row is None:
                 return {**base, "error": "no answer from the run's reader"}
             return {**base, "answer": row.get("answer") or "", "reader_model": row.get(

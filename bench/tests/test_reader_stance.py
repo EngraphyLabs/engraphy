@@ -16,7 +16,8 @@ from bench.core.llm import StubLLM
 
 def test_default_stance_is_grounded():
     assert READER_DEFAULT_STANCE == "grounded"
-    assert set(READER_STANCES) == {"strict", "grounded"}
+    # `facts` is the experimental oracle-fix stance, selectable but never the default.
+    assert set(READER_STANCES) == {"strict", "grounded", "facts"}
 
 
 def test_grounded_enables_inference_strict_declines():

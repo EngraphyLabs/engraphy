@@ -263,7 +263,11 @@ READER_SKILL = "answer-discipline.md"
 # selects which. `grounded` is the default here because the personal-memory pack
 # recommends it (the skill's own default for this domain) -- and it is a run-level
 # knob, recorded in the manifest, not a prompt authored for the benchmark.
-READER_STANCES = ("strict", "grounded")
+# `facts` is an experimental stance, never the default: answer from whatever the
+# returned memories say, decline only when none bears on the question, and give a
+# short personalised answer to a request for a suggestion. Measured against
+# `grounded` on LongMemEval (analysis/2026-10-27-oracle-fixes-experiment.md).
+READER_STANCES = ("strict", "grounded", "facts")
 READER_DEFAULT_STANCE = "grounded"
 
 # How the reader lays out its reply. `verify`, the default, has it name the
@@ -285,6 +289,20 @@ _OUTPUT_BASE = (
 
 
 def _stance_directive(stance: str) -> str:
+    if stance == "facts":
+        return (
+            "## Active inference stance for this evaluation: `facts`\n\n"
+            "Answer from the facts in the memory. When any returned memory bears on "
+            "the question, answer from it, even when it covers the question only in "
+            "part: give the best answer the memory supports, and say which part it "
+            "does not cover. Decline only when no returned memory relates to the "
+            "subject of the question at all, or when the memory shows the question "
+            "rests on something that did not happen. When the question asks for a "
+            "suggestion or advice, answer it from what the memory says about the "
+            "person's own preferences, circumstances and past choices. The hard "
+            "invariant still holds: never assert as fact what the memory does not "
+            "support."
+        )
     if stance == "grounded":
         return (
             "## Active inference stance for this evaluation: `grounded`\n\n"
@@ -315,7 +333,13 @@ _VERIFY_FORMAT = (
 def _output_contract(stance: str, contract: str = READER_DEFAULT_CONTRACT) -> str:
     if contract not in READER_CONTRACTS:
         raise ValueError(f"unknown reader contract {contract!r}; choose {READER_CONTRACTS}")
-    if stance == "grounded":
+    if stance == "facts":
+        text = _OUTPUT_BASE + (
+            " A request for a suggestion or advice may take up to four sentences. "
+            "If no returned memory relates to the question, reply with exactly the "
+            "single word INSUFFICIENT."
+        )
+    elif stance == "grounded":
         text = _OUTPUT_BASE + (
             " If the memory neither states the answer nor supports a grounded "
             "inference, reply with exactly the single word INSUFFICIENT."
