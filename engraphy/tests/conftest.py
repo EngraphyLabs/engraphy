@@ -33,7 +33,11 @@ APP_DATABASE_URL = DATABASE_URL.replace("postgres:engraphy@", f"{APP_ROLE}:{APP_
 
 _RLS_TABLES = ("nodes", "edges", "scopes", "scope_grants", "principals", "pending_writes", "inbox", "dedup_log", "metrics_rollup")
 _READ_ONLY_TABLES = ("spaces", "node_types", "edge_types", "edge_rules", "config")
-_UNGATED_WRITE_TABLES = ("api_tokens", "audit_log")
+# api_tokens takes UPDATE (resolve_token stamps last_used_at); audit_log is
+# append-only, so it takes SELECT + INSERT and no UPDATE. Mirrors
+# deploy/provision-app-role.sql, which this fixture is the test counterpart of.
+_UNGATED_WRITE_TABLES = ("api_tokens",)
+_APPEND_ONLY_TABLES = ("audit_log",)
 
 # The product's ONLY DELETE grant: resolve_duplicate consumes the parked row it
 # resolves (QUESTIONS.md "pending-write-consumption", resolved 2026-07-16).
@@ -74,6 +78,8 @@ def _ensure_app_role():
         cur.execute(f"GRANT DELETE ON {', '.join(_DELETE_TABLES)} TO {APP_ROLE}")
         cur.execute(f"GRANT SELECT ON {', '.join(_READ_ONLY_TABLES)} TO {APP_ROLE}")
         cur.execute(f"GRANT SELECT, INSERT, UPDATE ON {', '.join(_UNGATED_WRITE_TABLES)} TO {APP_ROLE}")
+        cur.execute(f"GRANT SELECT, INSERT ON {', '.join(_APPEND_ONLY_TABLES)} TO {APP_ROLE}")
+        cur.execute(f"REVOKE UPDATE, DELETE, TRUNCATE ON {', '.join(_APPEND_ONLY_TABLES)} FROM {APP_ROLE}")
         cur.execute(f"GRANT EXECUTE ON FUNCTION engraphy_readable_scopes() TO {APP_ROLE}")
         cur.execute(f"GRANT EXECUTE ON FUNCTION engraphy_writable_scopes() TO {APP_ROLE}")
         cur.execute(f"GRANT EXECUTE ON FUNCTION engraphy_validate_attrs(jsonb, jsonb) TO {APP_ROLE}")
