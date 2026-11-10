@@ -142,3 +142,32 @@ def test_a_window_over_the_prompt_budget_trims_titles_then_splits_and_merges():
     calls = len(seen)
     whole.extract(window)
     assert len(seen) == calls + 1 and whole.windows_split == 0
+
+
+def test_a_split_window_keeps_the_most_recent_prior_titles_that_fit():
+    from bench.core import run as harness
+    from bench.core.corpus import Session, Turn
+    from bench.core.extract import ExtractWindow, LLMExtractor
+
+    prompts = []
+
+    class Client:
+        def complete(self, system, user, **kw):
+            prompts.append(user)
+
+            class R:
+                data = {"nodes": [], "edges": []}
+                input_tokens, output_tokens = 1, 2
+            return R()
+
+    pack, _ = harness.load_named_pack("conversational")
+    turns = tuple(Turn(speaker="user", text="word " * 3000, turn_id=f"s:{i}") for i in range(4))
+    titles = tuple(f"an earlier memory title {i:03d}" for i in range(50))
+    window = ExtractWindow(haystack_id="h", session=Session(session_id="s", turns=turns),
+                           turns=turns, window_index=0, prior_titles=titles)
+    ext = LLMExtractor(Client(), pack, prompt_name="extract-wide.md", max_prompt_chars=20000)
+    ext.extract(window)
+    assert ext.windows_split > 0 and len(prompts) > 1
+    for user in prompts:
+        assert len(user) <= 20000
+        assert titles[-1] in user  # every piece still sees the newest title
