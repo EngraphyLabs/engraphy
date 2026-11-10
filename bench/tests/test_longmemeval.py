@@ -142,3 +142,43 @@ def test_a_window_over_the_prompt_budget_trims_titles_then_splits_and_merges():
     calls = len(seen)
     whole.extract(window)
     assert len(seen) == calls + 1 and whole.windows_split == 0
+
+
+def test_repeated_session_id_is_kept_under_a_distinct_id(tmp_path):
+    import json as _json
+    from bench.adapters.longmemeval import LongMemEvalLoader
+    turn = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}]
+    item = {"question_id": "q1", "question_type": "single-session-user", "question": "?",
+            "answer": "a", "question_date": "2023/06/01 (Thu) 10:00",
+            "haystack_session_ids": ["s1", "s2", "s1"],
+            "haystack_dates": ["2023/05/01 (Mon) 10:00", "2023/05/02 (Tue) 10:00",
+                               "2023/05/03 (Wed) 10:00"],
+            "haystack_sessions": [turn, turn, turn]}
+    f = tmp_path / "s.json"
+    f.write_text(_json.dumps([item]), encoding="utf-8")
+    corpus = LongMemEvalLoader().load(f)
+    ids = [s.session_id for s in corpus.haystacks[0].sessions]
+    assert ids == ["s1", "s2", "s1#2"]
+    assert corpus.notes["repeated_session_ids_disambiguated"] == ["q1:s1"]
+
+
+def test_an_empty_turn_is_skipped_and_counted_but_an_empty_evidence_turn_fails(tmp_path):
+    import json as _json
+    import pytest
+    from bench.adapters.longmemeval import LongMemEvalLoader
+    from bench.core.corpus import CorpusError
+    turns = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": ""},
+             {"role": "user", "content": "bye", "has_answer": True}]
+    item = {"question_id": "q1", "question_type": "single-session-user", "question": "?",
+            "answer": "a", "haystack_session_ids": ["s1"],
+            "haystack_dates": ["2023/05/01 (Mon) 10:00"], "haystack_sessions": [turns]}
+    f = tmp_path / "s.json"
+    f.write_text(_json.dumps([item]), encoding="utf-8")
+    corpus = LongMemEvalLoader().load(f)
+    assert [t.turn_id for t in corpus.haystacks[0].sessions[0].turns] == ["s1:0", "s1:2"]
+    assert corpus.questions[0].evidence == ("s1:2",)
+    assert corpus.notes["empty_turns_skipped"] == ["q1:s1:1"]
+    turns[1]["has_answer"] = True
+    f.write_text(_json.dumps([item]), encoding="utf-8")
+    with pytest.raises(CorpusError):
+        LongMemEvalLoader().load(f)

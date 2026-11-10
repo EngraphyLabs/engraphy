@@ -85,6 +85,8 @@ class LongMemEvalLoader:
         haystacks: list[Haystack] = []
         questions: list[Question] = []
         unknown_roles: set[str] = set()
+        repeated: list[str] = []
+        empty_turns: list[str] = []
 
         for i, item in enumerate(raw):
             where = f"{path.name}[{i}]"
@@ -97,8 +99,10 @@ class LongMemEvalLoader:
                     "appear unnoticed in the report."
                 )
 
-            sessions, evidence, roles = _parse_haystack(item, where=where)
+            sessions, evidence, roles, repeats, empty = _parse_haystack(item, where=where)
             unknown_roles |= roles
+            repeated += [f"{question_id}:{r}" for r in repeats]
+            empty_turns += [f"{question_id}:{t}" for t in empty]
             haystacks.append(Haystack(haystack_id=question_id, sessions=sessions))
 
             abstain = question_id.endswith(_ABSTAIN_SUFFIX)
@@ -127,11 +131,14 @@ class LongMemEvalLoader:
                 "source_file": path.name,
                 "has_answer_propagated_to_store": False,
                 "unknown_roles_preserved_verbatim": sorted(unknown_roles),
+                "repeated_session_ids_disambiguated": repeated,
+                "empty_turns_skipped": empty_turns,
             },
         ).validate()
 
 
-def _parse_haystack(item: dict, *, where: str) -> tuple[tuple[Session, ...], tuple[str, ...], set[str]]:
+def _parse_haystack(item: dict, *, where: str
+                    ) -> tuple[tuple[Session, ...], tuple[str, ...], set[str], list[str], list[str]]:
     sessions_raw = require(item, "haystack_sessions", where=where)
     if not isinstance(sessions_raw, list):
         raise CorpusError(f"{where}: 'haystack_sessions' is not a list")
@@ -147,20 +154,38 @@ def _parse_haystack(item: dict, *, where: str) -> tuple[tuple[Session, ...], tup
     sessions: list[Session] = []
     evidence: list[str] = []
     unknown_roles: set[str] = set()
+    seen: dict[str, int] = {}
+    repeats: list[str] = []
+    empty: list[str] = []
 
     for n, raw_turns in enumerate(sessions_raw):
         sw = f"{where}.haystack_sessions[{n}]"
         if not isinstance(raw_turns, list):
             raise CorpusError(f"{sw}: expected a list of turns")
         session_id = str(session_ids[n]) if n < len(session_ids) else f"session_{n}"
+        # The S file places the same session twice, at two dates, in 13 of its 500
+        # haystacks. Both placements are ingested, as the benchmark presents them; the
+        # later one in file order gets a distinct id so the corpus stays well formed.
+        seen[session_id] = seen.get(session_id, 0) + 1
+        if seen[session_id] > 1:
+            repeats.append(session_id)
+            session_id = f"{session_id}#{seen[session_id]}"
         timestamp = str(dates[n]) if n < len(dates) else None
 
         turns: list[Turn] = []
         for k, t in enumerate(raw_turns):
             tw = f"{sw}[{k}]"
             content = require(t, "content", where=tw)
-            if not isinstance(content, str) or not content.strip():
-                raise CorpusError(f"{tw}: 'content' is empty or not a string")
+            if not isinstance(content, str):
+                raise CorpusError(f"{tw}: 'content' is not a string")
+            if not content.strip():
+                # 12 turns in 7 S haystacks are empty strings, none of them evidence.
+                # An empty utterance carries nothing to store; it is skipped and
+                # counted, and the turn index keeps its file position.
+                if t.get("has_answer"):
+                    raise CorpusError(f"{tw}: an evidence turn is empty")
+                empty.append(f"{session_id}:{k}")
+                continue
             role = str(require(t, "role", where=tw))
             if role not in (ROLE_USER, ROLE_ASSISTANT):
                 # Preserved verbatim and recorded, not coerced: silently
@@ -187,7 +212,7 @@ def _parse_haystack(item: dict, *, where: str) -> tuple[tuple[Session, ...], tup
     order = sorted(range(len(sessions)),
                    key=lambda i: (0, d, i) if (d := _parse_date(sessions[i].timestamp))
                    else (1, datetime.min, i))
-    return tuple(sessions[i] for i in order), tuple(evidence), unknown_roles
+    return tuple(sessions[i] for i in order), tuple(evidence), unknown_roles, repeats, empty
 
 
 _DAY = re.compile(r"\s*\([A-Za-z]+\)\s*")
