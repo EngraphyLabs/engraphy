@@ -260,37 +260,40 @@ class LLMExtractor:
         import dataclasses
 
         budget = self.max_prompt_chars
+        bare = dataclasses.replace(window, prior_titles=())
+        if len(self._render(bare)) > budget:
+            # The turns alone exceed the budget: split them first. Each part keeps
+            # the window's prior titles and, through extract(), trims only as many
+            # of the oldest as it needs, so every part still sees the recent ones.
+            self.windows_split += 1
+            if len(window.turns) > 1:
+                mid = len(window.turns) // 2
+                parts = [window.turns[:mid], window.turns[mid:]]
+            else:
+                # One turn too long for any window: its text is cut in two, each half
+                # keeping the turn's id, so provenance still points at the right turn.
+                turn = window.turns[0]
+                cut = len(turn.text) // 2
+                parts = [(dataclasses.replace(turn, text=turn.text[:cut]),),
+                         (dataclasses.replace(turn, text=turn.text[cut:]),)]
+            results = []
+            for part in parts:
+                self._split_index += 1
+                results.append(self.extract(dataclasses.replace(
+                    window, turns=tuple(part), window_index=self._split_index)))
+            return ExtractResult(
+                nodes=tuple(n for r in results for n in r.nodes),
+                edges=tuple(e for r in results for e in r.edges),
+                input_tokens=sum(r.input_tokens for r in results),
+                output_tokens=sum(r.output_tokens for r in results),
+            )
+
         titles = list(window.prior_titles)
         while titles and len(self._render(dataclasses.replace(
                 window, prior_titles=tuple(titles)))) > budget:
             titles.pop(0)  # the oldest title goes first; recent ones carry updates
             self.titles_trimmed += 1
-        window = dataclasses.replace(window, prior_titles=tuple(titles))
-        if len(self._render(window)) <= budget:
-            return self._extract_one(window)
-
-        self.windows_split += 1
-        if len(window.turns) > 1:
-            mid = len(window.turns) // 2
-            parts = [window.turns[:mid], window.turns[mid:]]
-        else:
-            # One turn too long for any window: its text is cut in two, each half
-            # keeping the turn's id, so provenance still points at the right turn.
-            turn = window.turns[0]
-            cut = len(turn.text) // 2
-            parts = [(dataclasses.replace(turn, text=turn.text[:cut]),),
-                     (dataclasses.replace(turn, text=turn.text[cut:]),)]
-        results = []
-        for part in parts:
-            self._split_index += 1
-            results.append(self.extract(dataclasses.replace(
-                window, turns=tuple(part), window_index=self._split_index)))
-        return ExtractResult(
-            nodes=tuple(n for r in results for n in r.nodes),
-            edges=tuple(e for r in results for e in r.edges),
-            input_tokens=sum(r.input_tokens for r in results),
-            output_tokens=sum(r.output_tokens for r in results),
-        )
+        return self._extract_one(dataclasses.replace(window, prior_titles=tuple(titles)))
 
     def _extract_one(self, window: ExtractWindow) -> ExtractResult:
         from bench.core.llm import LLMError
