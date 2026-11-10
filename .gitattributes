@@ -14,3 +14,6 @@
 
 # Vendored upstream LongMemEval sources are pinned by sha256; never convert their line endings.
 bench/prompts/longmemeval/*.upstream* -text
+
+# Vendored upstream BEAM sources are pinned by sha256; never convert their line endings.
+bench/prompts/beam/*.upstream* -text
