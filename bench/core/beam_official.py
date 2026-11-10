@@ -72,7 +72,7 @@ from bench.core.answer import render_envelope
 from bench.core.corpus import Question
 from bench.core.judge import Verdict
 from bench.core.llm import LLMError
-from bench.core.providers import QuotaExhausted
+from bench.core.providers import AuthExpired, QuotaExhausted
 from bench.core.reference import ReferenceAnswer
 
 __all__ = [
@@ -306,7 +306,7 @@ class OfficialJudge:
             result = EVALUATORS[question.category](
                 rubric=list(question.rubric), llm_response=response,
                 probing_question=question.text, model=model)
-        except QuotaExhausted:
+        except (QuotaExhausted, AuthExpired):
             raise
         except (LLMError, ValueError, KeyError, TypeError) as exc:
             return BeamVerdict(correct=False, graded_by="judge_error",
@@ -332,7 +332,7 @@ class OfficialReader:
         started = time.perf_counter()
         try:
             resp = self.client.complete("", answer_prompt(question, envelope))
-        except QuotaExhausted:
+        except (QuotaExhausted, AuthExpired):
             raise
         except LLMError as exc:
             return ReferenceAnswer(question.question_id, "", "", 0.0,

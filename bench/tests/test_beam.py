@@ -404,3 +404,16 @@ def test_the_pass_grades_a_saved_run_offline_end_to_end(tmp_path, monkeypatch, c
     assert manifest["dataset_licence"].startswith("CC BY-SA 4.0")
     assert "overall (unweighted mean of 10 categories" in (out / "report.md").read_text(
         encoding="utf-8")
+
+
+def test_an_expired_session_stops_the_pass_rather_than_grading_zero():
+    from bench.core.providers import AuthExpired
+
+    class Expired:
+        def complete(self, system, user, **kw):
+            raise AuthExpired("session expired")
+
+    with pytest.raises(AuthExpired):
+        bo.OfficialJudge(Expired()).grade(_q("abstention", ["A"]), "resp")
+    with pytest.raises(AuthExpired):
+        bo.OfficialReader(Expired()).read(_q("abstention", ["A"]), {"results": []})
