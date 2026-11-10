@@ -32,6 +32,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import subprocess
 import sys
 from collections import Counter
 
@@ -110,6 +112,9 @@ def main() -> int:
                   "reuse_verdicts_for_identical_answers": args.reuse_verdicts},
         "groups": dict(Counter(i["group"] for i in items)),
         "sample_per_group": args.sample or None,
+        "harness_git_sha": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
+                                          text=True).stdout.strip() or None,
+        "cli_settings_isolated": os.environ.get("ENGRAPHY_BENCH_CLI_ISOLATE_SETTINGS") == "1",
     }
     print(f"replay {args.name} over {src.manifest.get('run_id')} -> {out}")
     print(f"  {len(items)} questions: {manifest['groups']}")
