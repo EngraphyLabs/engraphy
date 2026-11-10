@@ -433,7 +433,9 @@ async def phase_ingest(pool, ck: Checkpoint, corpus: Corpus, arms: list[Arm],
                     "space_id": space_id, "done": True,
                     "sessions": len(haystack.sessions), "turns": haystack.turn_count,
                     "windows_split": getattr(extractor, "windows_split", 0),
-                    "titles_trimmed": getattr(extractor, "titles_trimmed", 0)})
+                    "titles_trimmed": getattr(extractor, "titles_trimmed", 0),
+                    "windows_refused": getattr(extractor, "windows_refused", 0),
+                    "windows_failed": getattr(extractor, "windows_failed", 0)})
         ck.append("ingest.jsonl", row)
         print(f"           {row['drafts']} drafts → {row['nodes_written']} nodes, "
               f"confirm-band {row['confirm_band_rate']:.1%}, "

@@ -117,6 +117,23 @@ class QuotaExhausted(LLMError):
     """
 
 
+class ModelRefusal(LLMError):
+    """The model declined this one request (`stop_reason: "refusal"`).
+
+    A property of the prompt, not of the account: rerunning returns the same
+    refusal, so it is neither a cap to wait out nor a stop. The caller records
+    it as a failed call and carries on.
+    """
+
+
+def _stop_reason(stdout: str) -> str | None:
+    try:
+        payload = json.loads(stdout)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return payload.get("stop_reason") if isinstance(payload, dict) else None
+
+
 class AuthExpired(LLMError):
     """The CLI has no usable credentials: its OAuth session expired, or a key was
     rejected.
@@ -519,6 +536,8 @@ class ClaudeCLIClient:
                     "the Claude CLI exited without a diagnostic and its output "
                     f"reports an authentication failure: {_reason(stdout)[:300]}. "
                     "Re-authenticate it (`claude login`).")
+            if _stop_reason(stdout) == "refusal":
+                raise ModelRefusal(f"the model declined this request: {stdout[:200]!r}")
             if not stderr:
                 raise QuotaExhausted(
                     f"Claude CLI exited {proc.returncode} with no diagnostic output "
