@@ -244,6 +244,8 @@ class LLMExtractor:
         # halves' drafts are merged. `windows_split` and `titles_trimmed` count it.
         self.max_prompt_chars = max_prompt_chars
         self.windows_split = 0
+        self.windows_refused = 0
+        self.windows_failed = 0
         self.titles_trimmed = 0
         self._split_index = 1_000_000
 
@@ -297,7 +299,7 @@ class LLMExtractor:
 
     def _extract_one(self, window: ExtractWindow) -> ExtractResult:
         from bench.core.llm import LLMError
-        from bench.core.providers import AuthExpired, QuotaExhausted
+        from bench.core.providers import AuthExpired, ModelRefusal, QuotaExhausted
 
         user = _render_window(window, self._node_types, self._edge_types,
                               show_turn_ids=self.retain_source_text)
@@ -318,10 +320,16 @@ class LLMExtractor:
             # session needs an operator. Both belong to the run loop, which knows
             # how to checkpoint, resume, or halt.
             raise
+        except ModelRefusal:
+            # The model declined this window; a rerun returns the same. Counted
+            # apart from other failures and recorded per haystack.
+            self.windows_refused += 1
+            return ExtractResult()
         except LLMError:
             # One failed window must not abort a 500-haystack run. The caller
             # records the gap; an empty result is honest -- it says this window
             # contributed nothing, which is exactly what happened.
+            self.windows_failed += 1
             return ExtractResult()
 
         payload = resp.data if resp.data is not None else {}

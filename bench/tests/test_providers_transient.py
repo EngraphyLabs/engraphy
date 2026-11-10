@@ -120,3 +120,38 @@ def test_stop_class_buckets():
     assert stop_class("usage limit: Claude CLI usage limit reached: 429 ...") == "usage"
     assert stop_class("quota: Gemini daily quota exhausted") == "usage"
     assert stop_class("5 consecutive judge failures; last: malformed schema response") == "halt"
+
+
+def test_a_refusal_with_no_stderr_is_a_refusal_not_a_quota_stop(monkeypatch):
+    """The CLI exits 1 with empty stderr on a model refusal too; its JSON says
+    stop_reason "refusal". That is a failed call, not a cap to wait out."""
+    from bench.core.providers import ModelRefusal, QuotaExhausted
+    monkeypatch.setattr(providers, "_resolve_binary", lambda name: ["claude.exe"])
+    out = json.dumps({"stop_reason": "refusal", "usage": {}})
+    monkeypatch.setattr(providers.subprocess, "run", lambda cmd, **kw:
+                        subprocess.CompletedProcess(args=cmd, returncode=1, stdout=out, stderr=""))
+    with pytest.raises(ModelRefusal):
+        ClaudeCLIClient(model="sonnet").complete("system", "user")
+    monkeypatch.setattr(providers.subprocess, "run", lambda cmd, **kw:
+                        subprocess.CompletedProcess(args=cmd, returncode=1, stdout="", stderr=""))
+    with pytest.raises(QuotaExhausted):
+        ClaudeCLIClient(model="sonnet").complete("system", "user")
+
+
+def test_a_refused_extraction_window_is_counted_and_empty():
+    from bench.core import run as harness
+    from bench.core.corpus import Session, Turn
+    from bench.core.extract import ExtractWindow, LLMExtractor
+    from bench.core.providers import ModelRefusal
+
+    class Client:
+        def complete(self, system, user, **kw):
+            raise ModelRefusal("declined")
+
+    pack, _ = harness.load_named_pack("conversational")
+    turns = (Turn(speaker="user", text="hello", turn_id="s:0"),)
+    window = ExtractWindow(haystack_id="h", session=Session(session_id="s", turns=turns),
+                           turns=turns, window_index=0, prior_titles=())
+    ext = LLMExtractor(Client(), pack, prompt_name="extract-wide.md")
+    result = ext.extract(window)
+    assert result.nodes == () and ext.windows_refused == 1 and ext.windows_failed == 0
