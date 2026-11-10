@@ -57,3 +57,37 @@ image-only turns dropped.
 Not acquired. Several hundred MB (`longmemeval_s` alone is ~115k tokens per
 question across 500 questions), distributed via a Google Drive link from its
 repo. Deferred deliberately — see design/09.
+
+## BEAM
+
+```sh
+mkdir -p datasets/beam
+curl -sL "https://huggingface.co/datasets/Mohammadta/BEAM/resolve/3205395e/data/100K-00000-of-00001.parquet"   -o datasets/beam/100K.parquet
+for o in 0 5 10 15; do
+  curl -sL "https://datasets-server.huggingface.co/rows?dataset=Mohammadta/BEAM&config=default&split=100K&offset=$o&length=5"     -o datasets/beam/rows_$o.json
+done
+```
+
+- **Source:** `Mohammadta/BEAM` on Hugging Face, revision `3205395e`, split `100K`
+- **`100K.parquet` sha256:** `c0519be25907005ba873c927c50877471d550873039d96c041554d0075a78ace`,
+  recorded as the run's dataset digest
+- **Licence: CC BY-SA 4.0.** Attribute Tavakoli et al., "Beyond a Million Tokens:
+  Benchmarking and Enhancing Long-Term Memory in LLMs" (arXiv:2510.27246). The
+  share-alike term binds redistributing the data, not reporting a score.
+
+`BeamLoader` reads the `rows_*.json` pages beside the parquet (the harness does not
+depend on pyarrow) and records each page's sha256 in the corpus notes. Run with
+`--benchmark beam --dataset datasets/beam/100K.parquet`. The pages match upstream's
+`chats/100K/` files (`mohammadtavakoli78/BEAM` at `b2da22e`) turn for turn and
+rubric for rubric.
+
+| | |
+|---|---|
+| haystacks (conversations) | 20 |
+| sessions (chat batches) | 90 |
+| turns | 5,732 |
+| characters | 12,232,071 |
+| **questions** | **400**, 40 in each of 10 categories |
+
+The official grading is `bench/core/beam_official.py`, applied to a finished run by
+`python -m bench.beam_pass`.

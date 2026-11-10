@@ -148,6 +148,9 @@ class Question:
     # nothing without it, so the reader is shown it. None for LoCoMo, whose
     # questions carry no date, which leaves its reader prompt byte-identical.
     question_date: str | None = None
+    # The suite's own grading rubric, for suites that grade against one (BEAM).
+    # Empty for every other suite, whose judge compares against `gold_answer`.
+    rubric: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.question_id:

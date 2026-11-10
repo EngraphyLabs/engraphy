@@ -66,6 +66,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from engraphy.core import embedding
 
+from bench.adapters.beam import BeamLoader
 from bench.adapters.locomo import LoCoMoLoader
 from bench.adapters.longmemeval import LongMemEvalLoader
 from bench.core.answer import READER_CONTRACTS, READER_STANCES, Reader, build_reader_system
@@ -153,7 +154,7 @@ DB = os.environ.get(
 )
 APP_DB = DB.replace("postgres:engraphy@", "engraphy_app:engraphy_app_test_only@")
 
-LOADERS = {"locomo": LoCoMoLoader, "longmemeval": LongMemEvalLoader}
+LOADERS = {"beam": BeamLoader, "locomo": LoCoMoLoader, "longmemeval": LongMemEvalLoader}
 # `llm_wide` is `llm` with a different extraction prompt (extract-wide.md):
 # completeness over economy, what one person says to or about another in scope
 # with both named, and a new instance of a recurring thing treated as a new
@@ -1470,6 +1471,9 @@ DATASET_LICENCES = {
               "publication is the project owner's open question",
     "longmemeval": "MIT (xiaowu0162/longmemeval-cleaned on Hugging Face, and the "
                    "xiaowu0162/LongMemEval repository)",
+    "beam": "CC BY-SA 4.0 (Mohammadta/BEAM on Hugging Face); attribution: Tavakoli et al., "
+            "BEAM, 'Beyond a Million Tokens: Benchmarking and Enhancing Long-Term Memory "
+            "in LLMs' (arXiv:2510.27246). Evaluation code: mohammadtavakoli78/BEAM, MIT",
 }
 
 
