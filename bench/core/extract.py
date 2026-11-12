@@ -230,6 +230,9 @@ class LLMExtractor:
         self.pack = pack
         self.prompt_name = prompt_name
         self.system = load_prompt(prompt_name)
+        from bench.core.llm import anonymous_user_instruction
+        if (anon := anonymous_user_instruction()):
+            self.system = f"{self.system}\n\n---\n\n{anon}"
         self.effort = effort
         self.max_tokens = max_tokens
         self.retain_source_text = retain_source_text
