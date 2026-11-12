@@ -480,6 +480,16 @@ def _client_for(role: str, provider: str):
     return ClaudeCLIClient(model=ROLE_MODELS[role]["model"])
 
 
+def _anonymous_user_manifest() -> dict | None:
+    """What the run manifest records of the opt-in anonymous-user instruction."""
+    from bench.core.llm import ANONYMOUS_USER_PROMPT, anonymous_user_instruction, prompt_hash
+    text = anonymous_user_instruction()
+    if text is None:
+        return None
+    return {"prompt": ANONYMOUS_USER_PROMPT, "sha256": prompt_hash(ANONYMOUS_USER_PROMPT),
+            "applied_to": ["extractor system prompt", "reader system prompt"], "text": text}
+
+
 def _build_extractor(name: str, pack: dict, provider: str = "claude-cli", *,
                      max_prompt_chars: int | None = None):
     """The arm's extractor name selects the prompt, which is what makes
@@ -1384,6 +1394,7 @@ def build_manifest(args, corpus: Corpus, arms: list[Arm], pack_meta: dict,
         "git_branch": _branch(),
         "transport": "in-process (engraphy.core), per design/09 §in-process decision",
         "cli_settings_isolated": os.environ.get("ENGRAPHY_BENCH_CLI_ISOLATE_SETTINGS") == "1",
+        "anonymous_user_instruction": _anonymous_user_manifest(),
         "principal": "bench",
         # One space PER PACK (node_types are space-scoped). Each pack's shipped
         # file hash is recorded so "we ran the shipped pack" is verifiable; the

@@ -417,3 +417,23 @@ def prompt_hash(name: str) -> str:
     """
     digest = hashlib.sha256(load_prompt(name).encode("utf-8")).hexdigest()
     return f"sha256:{digest[:16]}"
+
+
+ANONYMOUS_USER_ENV = "ENGRAPHY_BENCH_ANONYMOUS_USER"
+ANONYMOUS_USER_PROMPT = "anonymous-user.md"
+
+
+def anonymous_user_instruction() -> str | None:
+    """The opt-in instruction that the benchmark's user is anonymous, or None.
+
+    On the Claude CLI route the signed-in account's email reaches every call, and
+    on transcripts that never name their user the extractor and reader named the
+    user after the account (BEAM-100K, 2026-11-10: 269 of 342 memories). With
+    ENGRAPHY_BENCH_ANONYMOUS_USER=1 this fragment is appended to the extractor's and
+    the reader's system prompts; its hash is recorded in the run manifest. Off by
+    default, so every earlier run reproduces as it ran.
+    """
+    import os
+    if os.environ.get(ANONYMOUS_USER_ENV) != "1":
+        return None
+    return load_prompt(ANONYMOUS_USER_PROMPT)

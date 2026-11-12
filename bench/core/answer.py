@@ -394,10 +394,15 @@ def build_reader_system(stance: str = READER_DEFAULT_STANCE, *,
     contract_text = _output_contract(stance, contract)
     system = (f"{skill_text}\n\n---\n\n{_stance_directive(stance)}"
               f"\n\n---\n\n{contract_text}")
+    from bench.core.llm import anonymous_user_instruction
+    anon = anonymous_user_instruction()
+    if anon:
+        system = f"{system}\n\n---\n\n{anon}"
     manifest = {
         "governing_skill": f"skills/{READER_SKILL}" if not skill_path else str(skill_file),
         "governing_skill_sha256": f"sha256:{skill_sha}",
         "inference_stance": stance,
+        "anonymous_user_instruction": bool(anon),
         "output_format": contract,
         "output_contract": contract_text,
         "reader_input_shape": RENDER_FORMAT_VERSION,
