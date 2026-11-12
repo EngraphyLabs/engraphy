@@ -82,6 +82,25 @@ def finish(ck: harness.Checkpoint, manifest: dict, title: str) -> dict:
     return agg
 
 
+# The reader's verify contract answers the bare token INSUFFICIENT when memory holds
+# nothing relevant. BEAM's rubric judge expects a sentence stating that the
+# conversation does not contain the information, and grades the bare token as no
+# response. With --render-decline the token is replaced, before the judge, by one
+# fixed sentence that carries nothing from the question. It applies to every
+# category alike, never conditioned on the gold label, and each row keeps the raw
+# answer beside the graded text.
+DECLINE_TOKEN = "INSUFFICIENT"
+DECLINE_SENTENCE = ("I don't have any information about that in our previous "
+                    "conversations.")
+
+
+def render_decline(answer: str) -> tuple[str, bool]:
+    """The text the judge grades, and whether the decline token was rendered."""
+    if answer.strip() == DECLINE_TOKEN:
+        return DECLINE_SENTENCE, True
+    return answer, False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="bench.beam_pass")
     ap.add_argument("--run-dir", required=True)
@@ -91,6 +110,9 @@ def main() -> int:
     ap.add_argument("--arm", help="which arm of the run to read, when it has more than one")
     ap.add_argument("--name", help="output directory name under the run, default "
                     "'official' or 'official-reader'")
+    ap.add_argument("--render-decline", action="store_true",
+                    help="grade a bare INSUFFICIENT as a fixed decline sentence, in every "
+                         "category; recorded in the manifest and on each row")
     args = ap.parse_args()
 
     src = offline.load_source(args.run_dir, arm=args.arm)
@@ -127,6 +149,12 @@ def main() -> int:
         "questions": len(questions),
         "rubric_items": sum(len(q.rubric) for q in questions),
         "questions_without_saved_envelope": missing,
+        "decline_rendering": ({"token": DECLINE_TOKEN, "sentence": DECLINE_SENTENCE,
+                               "applies_to": "every answer that is exactly the token, "
+                                             "in every category",
+                               "row_fields": "answer is the graded text; answer_raw is "
+                                             "the reader's own"}
+                              if args.render_decline else None),
     }
     print(f"BEAM official pass ({args.reader} reader) over "
           f"{src.manifest.get('run_id')} -> {out}")
@@ -145,7 +173,11 @@ def main() -> int:
             row = src.source_row(q.question_id)
             if row is None:
                 return {**base, "error": "no answer from the run's reader"}
-            return {**base, "answer": row.get("answer") or "", "reader_model": row.get(
+            raw = row.get("answer") or ""
+            graded, rendered = (render_decline(raw) if args.render_decline
+                                else (raw, False))
+            return {**base, "answer": graded, "answer_raw": raw,
+                    "decline_rendered": rendered, "reader_model": row.get(
                 "reader_model"), "source_arm": row.get("arm"), "error": ""}
         ans = OfficialReader(ClaudeCLIClient(model=reader_model)).read(q, env)
         return {**base, "answer": ans.text, "reader_output": ans.raw,
