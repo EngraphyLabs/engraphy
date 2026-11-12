@@ -21,6 +21,7 @@ runs under the supervisor like a run does:
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import sys
 
@@ -83,6 +84,7 @@ def main() -> int:
         "questions": len(questions),
         "questions_without_saved_envelope": sorted(missing),
         "limit": args.limit or None,
+        "cli_settings_isolated": os.environ.get("ENGRAPHY_BENCH_CLI_ISOLATE_SETTINGS") == "1",
     }
     print(f"reference pass over {src.manifest.get('run_id')} -> {out}")
     print(f"  {len(questions)} non-adversarial questions, arm {arm}")
