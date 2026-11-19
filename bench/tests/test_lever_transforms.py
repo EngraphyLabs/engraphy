@@ -61,3 +61,18 @@ def test_rerank_keeps_the_relevant_memories_adaptively():
     floor = rerank_adaptive(Fake(), "p", keep_min=3)(q, env)
     assert [r["node"]["title"] for r in floor["results"]] == ["b", "c", "a"]
     assert parse_scores("no json", 4) is None
+
+
+def test_time_expand_puts_in_range_memories_first(tmp_path):
+    from bench.lever_transforms import parse_range, time_expand
+
+    class Fake:
+        def complete(self, system, user, **kw):
+            return SimpleNamespace(text='{"start": "2023-04-01", "end": "2023-04-30"}')
+
+    q = SimpleNamespace(question_id="q1", text="Where did I live in April?",
+                        question_date="2023/06/01")
+    out = time_expand(_dates(tmp_path), Fake(), "p", keep=1)(q, _env())
+    assert [r["node"]["title"] for r in out["results"]] == ["York"]
+    assert out["_lever"]["in_range"] == 1
+    assert parse_range('{"start": null, "end": null}') == (None, None)

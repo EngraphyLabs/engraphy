@@ -64,11 +64,22 @@ def _transforms() -> dict[str, tuple]:
                           "matched from its verbatim source turns) in place of the ingest date"),
         "date-sort": (_dated(lt.date_sort),
                       "date-annotate, with the memories ordered oldest session first"),
+        "time-expand": (_time_expander,
+                        "a model (the judge model, low effort) extracts the question's time "
+                        "range with bench/prompts/time-range.md; memories whose session falls "
+                        "in it come first, then the rest, cut to 25, shown oldest first"),
         "rerank-adaptive": (_reranker,
                             "a model (the judge model, low effort) scores each retrieved memory "
                             "0-3 with bench/prompts/rerank.md; memories scored 2 or 3 are kept, "
                             "by score then rank, at least 5 and at most 25"),
     }
+
+
+def _time_expander(src):
+    from bench.lever_transforms import TIME_RANGE_PROMPT, SessionDates, time_expand
+    text = (harness.REPO / "bench" / "prompts" / TIME_RANGE_PROMPT).read_text(encoding="utf-8")
+    dates = SessionDates(harness.REPO / "datasets" / src.manifest["dataset"]["path"])
+    return time_expand(dates, ClaudeCLIClient(model=harness.CLAUDE_JUDGE_MODEL), text)
 
 
 def _reranker(src):

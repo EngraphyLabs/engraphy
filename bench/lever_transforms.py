@@ -176,3 +176,68 @@ def rerank_adaptive(client, prompt_text: str, *, threshold: int = 2, keep_min: i
         env["_lever"] = info
         return env
     return fn
+
+
+# ---- lever 2c: time-aware query expansion
+
+TIME_RANGE_PROMPT = "time-range.md"
+_DATE = re.compile(r"(\d{4})[/-](\d{2})[/-](\d{2})")
+
+
+def _day(s: str | None) -> str | None:
+    m = _DATE.search(s or "")
+    return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else None
+
+
+def parse_range(text: str) -> tuple[str | None, str | None] | None:
+    m = None
+    for m in _JSON_OBJ.finditer(text or ""):
+        pass
+    if m is None:
+        return None
+    try:
+        raw = json.loads(m.group(0))
+    except ValueError:
+        return None
+    return _day(raw.get("start")), _day(raw.get("end"))
+
+
+def time_expand(dates: "SessionDates", client, prompt_text: str, *, keep: int = 25,
+                effort: str = "low"):
+    """One model call extracts the question's time range from the question and its date.
+    The memories whose session date falls in the range come first, then the rest, each
+    group in retrieval order; the first `keep` are kept and then shown oldest first, as
+    date-sort shows them. No range, or an unusable reply, keeps retrieval order."""
+    sort = date_sort(dates)
+
+    def fn(q, env):
+        info = {"lever": "time-expand", "retrieved": len(env.get("results") or [])}
+        asked = getattr(q, "question_date", None) or "unknown"
+        try:
+            resp = client.complete(prompt_text, f"Question: {q.text}\nAsked on: {asked}",
+                                   max_tokens=200, effort=effort)
+            rng = parse_range(resp.text)
+        except Exception as exc:
+            from bench.core.providers import QuotaExhausted
+            if isinstance(exc, QuotaExhausted):
+                raise
+            rng, info["error"] = None, f"{type(exc).__name__}: {exc}"[:200]
+        env = copy.deepcopy(env)
+        results = env.get("results") or []
+        start, end = rng if rng else (None, None)
+        info["range"] = [start, end]
+        if start or end:
+            def inside(it):
+                ds = dates.dates_of(q.question_id, it.get("node", it))
+                return any((not start or _day(d) >= start) and (not end or _day(d) <= end)
+                           for d in ds if _day(d))
+            hit = [it for it in results if inside(it)]
+            rest = [it for it in results if not inside(it)]
+            info["in_range"] = len(hit)
+            results = hit + rest
+        env["results"] = results[:keep]
+        env = sort(q, env)
+        info["kept"] = len(env["results"])
+        env["_lever"] = info
+        return env
+    return fn
