@@ -46,11 +46,28 @@ from bench.console import use_utf8_streams
 
 use_utf8_streams()
 
-# Envelope transforms: name -> (function(question, envelope) -> envelope, description).
-# "none" is the identity; retrieval-side levers register theirs here.
-TRANSFORMS: dict[str, tuple] = {
-    "none": (lambda q, env: env, "the run's saved envelope, unchanged"),
-}
+# Envelope transforms: name -> (factory(source) -> function(question, envelope) -> envelope,
+# description). "none" is the identity; bench/lever_transforms.py holds the others.
+def _dated(make):
+    def factory(src):
+        from bench.lever_transforms import SessionDates
+        return make(SessionDates(harness.REPO / "datasets" / src.manifest["dataset"]["path"]))
+    return factory
+
+
+def _transforms() -> dict[str, tuple]:
+    from bench import lever_transforms as lt
+    return {
+        "none": (lambda src: (lambda q, env: env), "the run's saved envelope, unchanged"),
+        "date-annotate": (_dated(lt.date_annotate),
+                          "each memory shows its source session's timestamp (attrs.session_date, "
+                          "matched from its verbatim source turns) in place of the ingest date"),
+        "date-sort": (_dated(lt.date_sort),
+                      "date-annotate, with the memories ordered oldest session first"),
+    }
+
+
+TRANSFORMS = _transforms()
 
 
 def id_hash(qid: str) -> str:
@@ -93,9 +110,10 @@ def main() -> int:
     args = ap.parse_args()
     if args.transform not in TRANSFORMS:
         raise SystemExit(f"--transform: choose from {sorted(TRANSFORMS)}")
-    transform, transform_note = TRANSFORMS[args.transform]
+    make_transform, transform_note = TRANSFORMS[args.transform]
 
     src = offline.load_source(args.run_dir, args.envelopes, arm=args.arm)
+    transform = make_transform(src)
     if src.manifest.get("benchmark") != "longmemeval":
         raise SystemExit("this A/B grades LongMemEval runs only")
     out = src.dir / "levers" / args.name

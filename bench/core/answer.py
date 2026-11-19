@@ -237,7 +237,8 @@ def render_envelope_json(envelope: dict) -> str:
         node = item.get("node", item) if isinstance(item, dict) else item
         items.append(_json_item(i, node) if isinstance(node, dict) else {"memory": i,
                                                                           "text": str(node)})
-    return ("The following memories were retrieved, as a JSON array, most relevant first:\n"
+    order = envelope.get("ordering") or "most relevant first"
+    return (f"The following memories were retrieved, as a JSON array, {order}:\n"
             + json.dumps(items, ensure_ascii=False, indent=1))
 
 
@@ -266,7 +267,8 @@ def render_envelope(envelope: dict) -> str:
 
     # search / search_then_traverse
     if "results" in envelope:
-        parts = ["The following memories were retrieved, most relevant first:",
+        order = envelope.get("ordering") or "most relevant first"
+        parts = [f"The following memories were retrieved, {order}:",
                  _render_items(envelope.get("results") or [])]
         traversed = envelope.get("traversed")
         if traversed:
