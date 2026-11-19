@@ -37,7 +37,7 @@ def _ids(env: dict) -> list:
     return [(r.get("node") or r).get("id") for r in env.get("results") or []]
 
 
-async def widen(run_dir: pathlib.Path, k: int) -> dict:
+async def widen(run_dir: pathlib.Path, k: int, name: str | None = None) -> dict:
     src = offline.load_source(run_dir)
     manifest = src.manifest
     arm_cfg = manifest["arms"][0] if len(manifest["arms"]) == 1 else None
@@ -46,7 +46,8 @@ async def widen(run_dir: pathlib.Path, k: int) -> dict:
     space_id = manifest["packs"][arm_cfg["pack"]]["space_id"]
     arm_space = harness.ArmSpace(space_id, "bench", arm_cfg["extractor"])
     run_k = arm_cfg.get("k") or 10
-    out = run_dir / f"envelopes-k{k}.jsonl"
+    stem = name or f"envelopes-k{k}"
+    out = run_dir / f"{stem}.jsonl"
     embedding.load_model()
     same = prefix_differs = 0
     pool = AsyncConnectionPool(harness.APP_DB, open=False, min_size=1, max_size=2)
@@ -66,10 +67,13 @@ async def widen(run_dir: pathlib.Path, k: int) -> dict:
                     print(f"  {i}/{len(src.envelopes)}", flush=True)
     finally:
         await pool.close()
+    from engraphy.core.search import SEARCH_WIDTH_ENV, search_caps
+    import os
     check = {"run_dir": str(run_dir), "space_id": space_id, "extractor": arm_cfg["extractor"],
+             "search_width_env": os.environ.get(SEARCH_WIDTH_ENV), "search_caps": search_caps(),
              "k": k, "run_k": run_k, "questions": same + prefix_differs,
              "first_run_k_match_saved": same, "first_run_k_differ": prefix_differs}
-    (run_dir / f"envelopes-k{k}.check.json").write_text(json.dumps(check, indent=2) + "\n",
+    (run_dir / f"{stem}.check.json").write_text(json.dumps(check, indent=2) + "\n",
                                                        encoding="utf-8")
     return check
 
@@ -78,8 +82,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="bench.wide_envelopes")
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--k", type=int, default=50)
+    ap.add_argument("--name", help="output file stem, default envelopes-k<k>")
     args = ap.parse_args()
-    check = asyncio.run(widen(offline.resolve_run_dir(args.run_dir), args.k))
+    check = asyncio.run(widen(offline.resolve_run_dir(args.run_dir), args.k, args.name))
     print(json.dumps(check, indent=2))
     return 0
 
