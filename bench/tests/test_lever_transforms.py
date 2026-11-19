@@ -44,3 +44,20 @@ def test_sort_orders_oldest_first_and_says_so(tmp_path):
 def test_the_saved_envelope_renders_as_before():
     assert render_envelope(_env()).startswith(
         "The following memories were retrieved, most relevant first:")
+
+
+def test_rerank_keeps_the_relevant_memories_adaptively():
+    from bench.lever_transforms import parse_scores, rerank_adaptive
+
+    class Fake:
+        def complete(self, system, user, **kw):
+            return SimpleNamespace(text='notes {"1": 0, "2": 3, "3": 2, "4": 0}', output_tokens=9)
+
+    env = {"results": [{"node": {"title": t}} for t in "abcd"]}
+    q = SimpleNamespace(question_id="q", text="?", question_date=None)
+    out = rerank_adaptive(Fake(), "p", keep_min=1)(q, env)
+    assert [r["node"]["title"] for r in out["results"]] == ["b", "c"]
+    assert out["_lever"]["kept"] == 2
+    floor = rerank_adaptive(Fake(), "p", keep_min=3)(q, env)
+    assert [r["node"]["title"] for r in floor["results"]] == ["b", "c", "a"]
+    assert parse_scores("no json", 4) is None

@@ -64,7 +64,17 @@ def _transforms() -> dict[str, tuple]:
                           "matched from its verbatim source turns) in place of the ingest date"),
         "date-sort": (_dated(lt.date_sort),
                       "date-annotate, with the memories ordered oldest session first"),
+        "rerank-adaptive": (_reranker,
+                            "a model (the judge model, low effort) scores each retrieved memory "
+                            "0-3 with bench/prompts/rerank.md; memories scored 2 or 3 are kept, "
+                            "by score then rank, at least 5 and at most 25"),
     }
+
+
+def _reranker(src):
+    from bench.lever_transforms import RERANK_PROMPT, rerank_adaptive
+    text = (harness.REPO / "bench" / "prompts" / RERANK_PROMPT).read_text(encoding="utf-8")
+    return rerank_adaptive(ClaudeCLIClient(model=harness.CLAUDE_JUDGE_MODEL), text)
 
 
 TRANSFORMS = _transforms()
@@ -157,6 +167,7 @@ def main() -> int:
     def read_one(item: dict) -> dict:
         q = src.questions[item["question_id"]]
         env = transform(q, src.envelopes[q.question_id])
+        lever_info = env.pop("_lever", None) if isinstance(env, dict) else None
         size, digest = offline.envelope_digest(env)
         reader = Reader(ClaudeCLIClient(model=reader_model), stance=args.stance,
                         contract=args.contract, render=args.render,
@@ -166,6 +177,8 @@ def main() -> int:
                "category": q.category, "abstain_expected": q.abstain_expected,
                **ans.as_dict()}
         row["envelope_bytes"], row["envelope_sha256"] = size, digest
+        if lever_info is not None:
+            row["lever"] = lever_info
         row["answer_parsed"] = (args.contract not in ("verify", "con")) or bool(ans.check)
         return row
 
