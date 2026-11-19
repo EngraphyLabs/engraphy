@@ -68,6 +68,9 @@ def _transforms() -> dict[str, tuple]:
                         "a model (the judge model, low effort) extracts the question's time "
                         "range with bench/prompts/time-range.md; memories whose session falls "
                         "in it come first, then the rest, cut to 25, shown oldest first"),
+        "speaker-tag": (lambda src: lt.speaker_tag(),
+                        "each memory carries said_by: the speakers of the verbatim "
+                        "turns it was drawn from"),
         "rerank-adaptive": (_reranker,
                             "a model (the judge model, low effort) scores each retrieved memory "
                             "0-3 with bench/prompts/rerank.md; memories scored 2 or 3 are kept, "
@@ -123,6 +126,8 @@ def main() -> int:
     ap.add_argument("--stance", default="grounded", choices=READER_STANCES)
     ap.add_argument("--render", default="prose", choices=RENDERINGS)
     ap.add_argument("--transform", default="none")
+    ap.add_argument("--speaker-aware", action="store_true",
+                    help="append the speaker-aware directive to the reader system prompt")
     ap.add_argument("--max-tokens", type=int, default=1000)
     ap.add_argument("--per-type", type=int, default=0)
     ap.add_argument("--slice", default="all", choices=("all", "dev", "test"))
@@ -141,7 +146,8 @@ def main() -> int:
     ck = harness.Checkpoint(out)
     reader_model = harness.ROLE_MODELS["reader"]["model"]
     judge_model = harness.CLAUDE_JUDGE_MODEL
-    probe = Reader(None, stance=args.stance, contract=args.contract, render=args.render)
+    probe = Reader(None, stance=args.stance, contract=args.contract, render=args.render,
+                   speaker_aware=args.speaker_aware)
     arm = f"{src.arm}/lever-{args.name}"
 
     qids = [q for q in select(src.questions, args.per_type, args.slice) if q in src.envelopes]
@@ -182,7 +188,7 @@ def main() -> int:
         size, digest = offline.envelope_digest(env)
         reader = Reader(ClaudeCLIClient(model=reader_model), stance=args.stance,
                         contract=args.contract, render=args.render,
-                        max_tokens=args.max_tokens)
+                        max_tokens=args.max_tokens, speaker_aware=args.speaker_aware)
         ans = reader.read(q, Retrieval(envelope=env, strategy=args.transform))
         row = {"arm": arm, "question_id": q.question_id, "haystack_id": q.haystack_id,
                "category": q.category, "abstain_expected": q.abstain_expected,

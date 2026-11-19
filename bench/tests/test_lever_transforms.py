@@ -76,3 +76,20 @@ def test_time_expand_puts_in_range_memories_first(tmp_path):
     assert [r["node"]["title"] for r in out["results"]] == ["York"]
     assert out["_lever"]["in_range"] == 1
     assert parse_range('{"start": null, "end": null}') == (None, None)
+
+
+def test_speaker_tag_and_directive_are_opt_in():
+    from bench.core.answer import build_reader_system
+    from bench.lever_transforms import speaker_tag
+
+    env = {"results": [
+        {"node": {"title": "a", "body": "a\n\nSource (verbatim):\nassistant: Try Rome."}},
+        {"node": {"title": "u", "body": "u\n\nSource (verbatim):\nuser: I went to Rome.\nassistant: Nice."}},
+        {"node": {"title": "n", "body": "no source"}}]}
+    out = speaker_tag()(SimpleNamespace(question_id="q"), env)
+    said = [(r["node"].get("attrs") or {}).get("said_by") for r in out["results"]]
+    assert said == ["the assistant", "the user and the assistant", None]
+    base, m = build_reader_system()
+    aware, m2 = build_reader_system(speaker_aware=True)
+    assert "said_by" not in base and "said_by" in aware and m2["speaker_aware"] is True
+    assert base == build_reader_system(speaker_aware=False)[0]

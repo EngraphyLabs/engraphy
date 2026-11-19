@@ -241,3 +241,35 @@ def time_expand(dates: "SessionDates", client, prompt_text: str, *, keep: int = 
         env["_lever"] = info
         return env
     return fn
+
+
+# ---- speaker-aware reading: who said each memory, from its verbatim source
+
+_SPEAKER = re.compile(r"(?m)^(user|assistant): ")
+SPEAKER_LABELS = {("user",): "the user", ("assistant",): "the assistant",
+                  ("assistant", "user"): "the user and the assistant"}
+
+
+def speaker_of(node: dict) -> str | None:
+    body = node.get("body") or ""
+    if SOURCE_MARK not in body:
+        return None
+    roles = tuple(sorted(set(_SPEAKER.findall(body.split(SOURCE_MARK, 1)[1]))))
+    return SPEAKER_LABELS.get(roles)
+
+
+def speaker_tag():
+    """Each memory carries `said_by`: the speakers of the verbatim turns it was drawn
+    from. A memory with no verbatim source is left untagged."""
+    def fn(q, env):
+        env = copy.deepcopy(env)
+        tagged = 0
+        for node in _nodes(env):
+            who = speaker_of(node)
+            if who:
+                node["attrs"] = {**(node.get("attrs") or {}), "said_by": who}
+                tagged += 1
+        env["_lever"] = {"lever": "speaker-tag", "tagged": tagged,
+                         "memories": len(_nodes(env))}
+        return env
+    return fn

@@ -11,7 +11,7 @@ import pytest
 
 from bench import offline
 from bench.core import reference
-from bench.core.answer import READER_CONTRACTS, Reader, _output_contract, split_reply
+from bench.core.answer import READER_CONTRACTS, READER_DEFAULT_CONTRACT, Reader, _output_contract, split_reply
 from bench.core.corpus import Question
 from bench.core.judge import Verdict
 from bench.core.llm import LLMError, LLMResponse
@@ -154,7 +154,9 @@ def test_direct_contract_is_the_published_contract_byte_for_byte():
 def test_verify_contract_adds_the_check_and_answer_lines():
     text = _output_contract("grounded", "verify")
     assert text.startswith(PUBLISHED_GROUNDED_CONTRACT) and "`CHECK:`" in text
-    assert set(READER_CONTRACTS) == {"verify", "direct"}
+    # "con" (Chain-of-Note) is an opt-in lever A/B contract; the default stays verify.
+    assert set(READER_CONTRACTS) == {"verify", "direct", "con"}
+    assert READER_DEFAULT_CONTRACT == "verify"
 
 
 @pytest.mark.parametrize(("raw", "contract", "expected"), [

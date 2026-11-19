@@ -438,10 +438,27 @@ def split_reply(raw: str, contract: str = READER_DEFAULT_CONTRACT) -> tuple[str,
 READER_OUTPUT_CONTRACT = _output_contract(READER_DEFAULT_STANCE)
 
 
+# Speaker-aware reading: an opt-in directive for the lever A/B, never a default. It
+# relies on each memory carrying `said_by` (bench/lever_transforms.py speaker_tag).
+SPEAKER_DIRECTIVE = (
+    "## Who said each memory\n\n"
+    "Each memory is marked `said_by`: the user, the assistant, or both. A memory said "
+    "by the assistant records what the assistant told the user in a past conversation, "
+    "such as a suggestion, an explanation or a list it gave. It is not a fact about the "
+    "user's life, and the user did not necessarily accept it. Answer a question about "
+    "what the assistant said, suggested, recommended or explained from the assistant's "
+    "memories. Answer every other question, about the user's own life, plans, "
+    "preferences, possessions, events and dates, from what the user said; use a memory "
+    "said only by the assistant for such a question only where the user's own words "
+    "confirm it."
+)
+
+
 def build_reader_system(stance: str = READER_DEFAULT_STANCE, *,
                         contract: str = READER_DEFAULT_CONTRACT,
                         skill_path: str | pathlib.Path | None = None,
-                        render: str = "prose") -> tuple[str, dict]:
+                        render: str = "prose",
+                        speaker_aware: bool = False) -> tuple[str, dict]:
     """The reader's full system instruction, and what the manifest records about it.
 
     The system is the shipped skill, then the active inference stance directive,
@@ -456,7 +473,10 @@ def build_reader_system(stance: str = READER_DEFAULT_STANCE, *,
     skill_text = skill_file.read_text(encoding="utf-8")
     skill_sha = hashlib.sha256(skill_text.encode("utf-8")).hexdigest()
     contract_text = _output_contract(stance, contract)
-    system = (f"{skill_text}\n\n---\n\n{_stance_directive(stance)}"
+    stance_text = _stance_directive(stance)
+    if speaker_aware:
+        stance_text = f"{stance_text}\n\n{SPEAKER_DIRECTIVE}"
+    system = (f"{skill_text}\n\n---\n\n{stance_text}"
               f"\n\n---\n\n{contract_text}")
     from bench.core.llm import anonymous_user_instruction
     anon = anonymous_user_instruction()
@@ -466,6 +486,7 @@ def build_reader_system(stance: str = READER_DEFAULT_STANCE, *,
         "governing_skill": f"skills/{READER_SKILL}" if not skill_path else str(skill_file),
         "governing_skill_sha256": f"sha256:{skill_sha}",
         "inference_stance": stance,
+        "speaker_aware": speaker_aware,
         "anonymous_user_instruction": bool(anon),
         "output_format": contract,
         "output_contract": contract_text,
@@ -564,7 +585,8 @@ class Reader:
                  stance: str = READER_DEFAULT_STANCE,
                  contract: str = READER_DEFAULT_CONTRACT,
                  skill_path: str | pathlib.Path | None = None,
-                 render: str = "prose") -> None:
+                 render: str = "prose",
+                 speaker_aware: bool = False) -> None:
         if render not in RENDERINGS:
             raise ValueError(f"unknown rendering {render!r}; choose {RENDERINGS}")
         self.client = client
@@ -572,7 +594,8 @@ class Reader:
         self.contract = contract
         self.render = render
         self.system, self.system_manifest = build_reader_system(
-            stance, contract=contract, skill_path=skill_path, render=render)
+            stance, contract=contract, skill_path=skill_path, render=render,
+            speaker_aware=speaker_aware)
         self.effort = effort
         self.max_tokens = max_tokens
 
