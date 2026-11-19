@@ -198,6 +198,49 @@ def _render_items(items: list) -> str:
     return "\n\n".join(blocks)
 
 
+RENDERINGS = ("prose", "json")
+JSON_RENDER_FORMAT_VERSION = "json_items_v1"
+
+
+def _json_item(rank: int, node: dict) -> dict:
+    """The fields `_node_block` shows, as one JSON object. Faithful in the same way:
+    scaffolding omitted, title, body, non-empty attrs, links and provenance kept."""
+    item = {"memory": rank}
+    for key in ("type", "title", "body"):
+        if node.get(key):
+            item[key] = node[key]
+    attrs = {k: v for k, v in sorted((node.get("attrs") or {}).items())
+             if v not in (None, "", [], {})}
+    if attrs:
+        item["attrs"] = attrs
+    if node.get("depth"):
+        item["reached_via_links"] = node["depth"]
+    linked = [{k: ln[k] for k in ("title", "body") if ln.get(k)}
+              for ln in (node.get("linked") or [])]
+    if linked:
+        item["linked"] = linked
+    prov = _provenance_line(node)
+    if prov:
+        item["provenance"] = prov
+    return item
+
+
+def render_envelope_json(envelope: dict) -> str:
+    """The search envelope as a JSON array of memories, most relevant first.
+
+    Opt-in for the lever A/B (LongMemEval's paper reports reading structured JSON
+    history alongside Chain-of-Note). Other envelope shapes fall back to prose."""
+    if not isinstance(envelope, dict) or "results" not in envelope or envelope.get("traversed"):
+        return render_envelope(envelope)
+    items = []
+    for i, item in enumerate(envelope.get("results") or [], start=1):
+        node = item.get("node", item) if isinstance(item, dict) else item
+        items.append(_json_item(i, node) if isinstance(node, dict) else {"memory": i,
+                                                                          "text": str(node)})
+    return ("The following memories were retrieved, as a JSON array, most relevant first:\n"
+            + json.dumps(items, ensure_ascii=False, indent=1))
+
+
 def render_envelope(envelope: dict) -> str:
     """Turn a retrieval envelope into clean, rank-ordered, readable prose.
 
@@ -276,7 +319,7 @@ READER_DEFAULT_STANCE = "grounded"
 # check puts the skill's subject-and-occasion test in front of every answer and
 # every decline. `direct` is the single-line reply, kept byte for byte so a run
 # under it can be reproduced.
-READER_CONTRACTS = ("verify", "direct")
+READER_CONTRACTS = ("verify", "direct", "con")
 READER_DEFAULT_CONTRACT = "verify"
 
 _OUTPUT_BASE = (
@@ -330,6 +373,22 @@ _VERIFY_FORMAT = (
 )
 
 
+# Chain-of-Note (Yu et al. 2023; the reading strategy LongMemEval's paper measures):
+# the reader first writes a note on each returned memory that bears on the question,
+# then answers from its notes. An opt-in contract for the lever A/B, never a default.
+_CON_FORMAT = (
+    "\n\nLay out your reply in three parts. First, a section that begins `NOTES:` with "
+    "one line per numbered memory that bears on the question: the memory's number, "
+    "then what it says that is relevant to the question, including any date it gives "
+    "or that its source text implies. Skip memories that do not bear on the question; "
+    "if none does, write `NOTES: none`. Second, reason briefly from your notes to the "
+    "answer. Third, "
+    "a final line that begins `ANSWER:` and carries only your answer, in the form "
+    "above; when you decline, it is exactly INSUFFICIENT. The grader sees only the "
+    "text after `ANSWER:`."
+)
+
+
 def _output_contract(stance: str, contract: str = READER_DEFAULT_CONTRACT) -> str:
     if contract not in READER_CONTRACTS:
         raise ValueError(f"unknown reader contract {contract!r}; choose {READER_CONTRACTS}")
@@ -351,6 +410,8 @@ def _output_contract(stance: str, contract: str = READER_DEFAULT_CONTRACT) -> st
         )
     if contract == "verify":
         text += _VERIFY_FORMAT
+    elif contract == "con":
+        text += _CON_FORMAT
     return text
 
 
@@ -362,7 +423,7 @@ def split_reply(raw: str, contract: str = READER_DEFAULT_CONTRACT) -> tuple[str,
     answer, so a formatting slip is graded on what the reader said rather than
     scored as an empty answer.
     """
-    if contract != "verify" or "ANSWER:" not in raw:
+    if contract not in ("verify", "con") or "ANSWER:" not in raw:
         return "", raw
     head, _, answer = raw.rpartition("ANSWER:")
     check = head.strip().strip("*").strip()
@@ -377,7 +438,8 @@ READER_OUTPUT_CONTRACT = _output_contract(READER_DEFAULT_STANCE)
 
 def build_reader_system(stance: str = READER_DEFAULT_STANCE, *,
                         contract: str = READER_DEFAULT_CONTRACT,
-                        skill_path: str | pathlib.Path | None = None) -> tuple[str, dict]:
+                        skill_path: str | pathlib.Path | None = None,
+                        render: str = "prose") -> tuple[str, dict]:
     """The reader's full system instruction, and what the manifest records about it.
 
     The system is the shipped skill, then the active inference stance directive,
@@ -405,7 +467,8 @@ def build_reader_system(stance: str = READER_DEFAULT_STANCE, *,
         "anonymous_user_instruction": bool(anon),
         "output_format": contract,
         "output_contract": contract_text,
-        "reader_input_shape": RENDER_FORMAT_VERSION,
+        "reader_input_shape": (RENDER_FORMAT_VERSION if render == "prose"
+                               else JSON_RENDER_FORMAT_VERSION),
         "note": (
             "The reader's governing instruction is the shipped skill file, loaded "
             f"by path (sha256 verifiable against the committed file), applied under "
@@ -498,12 +561,16 @@ class Reader:
     def __init__(self, client, *, effort: str = "medium", max_tokens: int = 1000,
                  stance: str = READER_DEFAULT_STANCE,
                  contract: str = READER_DEFAULT_CONTRACT,
-                 skill_path: str | pathlib.Path | None = None) -> None:
+                 skill_path: str | pathlib.Path | None = None,
+                 render: str = "prose") -> None:
+        if render not in RENDERINGS:
+            raise ValueError(f"unknown rendering {render!r}; choose {RENDERINGS}")
         self.client = client
         self.stance = stance
         self.contract = contract
+        self.render = render
         self.system, self.system_manifest = build_reader_system(
-            stance, contract=contract, skill_path=skill_path)
+            stance, contract=contract, skill_path=skill_path, render=render)
         self.effort = effort
         self.max_tokens = max_tokens
 
@@ -520,7 +587,8 @@ class Reader:
         # of the hashed envelope -- see the module docstring.
         blob = json.dumps(retrieval.envelope)
         digest = hashlib.sha256(blob.encode("utf-8")).hexdigest()
-        memory = render_envelope(retrieval.envelope)
+        memory = (render_envelope(retrieval.envelope) if self.render == "prose"
+                  else render_envelope_json(retrieval.envelope))
         # A suite that states when the question is asked (LongMemEval) gets that
         # date as a line of its own; LoCoMo states none, so its prompt is unchanged.
         asked = f"Current date: {question.question_date}\n" if question.question_date else ""
