@@ -12,6 +12,7 @@ results only, inside the read's transaction (QUESTIONS.md
 "recall-stats-vs-nodes-touch", resolved 2026-07-16; migration 0012).
 """
 import functools
+import os
 
 from psycopg.types.json import Jsonb
 
@@ -29,6 +30,26 @@ from engraphy.server.db import transaction
 # report / DECISIONS-DELTA. k=60 is baked into rrf_fuse.
 _LEG_CAP = 30       # top-N per leg before fusion (02)
 _MAX_LIMIT = 25     # result cap (02 "return limit (<= 25)")
+
+# Measurement override, off by default. ENGRAPHY_SEARCH_WIDTH=N raises the result cap
+# to N and each leg's cap to at least N, so a retrieval experiment can read more than
+# 25 results through the shipped search path. Unset, the caps above apply unchanged.
+SEARCH_WIDTH_ENV = "ENGRAPHY_SEARCH_WIDTH"
+_SEARCH_WIDTH_MAX = 200
+
+
+def search_caps() -> tuple[int, int]:
+    """(per-leg cap, result cap): (30, 25) unless ENGRAPHY_SEARCH_WIDTH is set."""
+    raw = os.environ.get(SEARCH_WIDTH_ENV, "").strip()
+    if not raw:
+        return _LEG_CAP, _MAX_LIMIT
+    try:
+        width = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{SEARCH_WIDTH_ENV} must be an integer, got {raw!r}") from exc
+    if not 1 <= width <= _SEARCH_WIDTH_MAX:
+        raise ValueError(f"{SEARCH_WIDTH_ENV} must be between 1 and {_SEARCH_WIDTH_MAX}")
+    return max(_LEG_CAP, width), max(_MAX_LIMIT, width)
 
 # Read-time near-duplicate collapse threshold. Two ACTIVE nodes whose stored
 # document embeddings are >= this cosine are treated as the same fact restated,
@@ -183,7 +204,7 @@ async def search(
     A scope='all' read writes one audit_log row -- the exfiltration tripwire (03).
     """
     query_vec = embed_query(query)  # OUTSIDE the transaction (trap 3)
-    limit = max(1, min(limit, _MAX_LIMIT))
+    limit = max(1, min(limit, search_caps()[1]))
 
     async with transaction(pool, space_id, principal) as conn:
         cur = conn.cursor()
@@ -417,7 +438,7 @@ async def _vector_leg(cur, space_id, query_vec, scope_set, types, include_inacti
         [q], space_id, scope_set, types, include_inactive,
     )
     sql += " ORDER BY embedding <=> %s::vector LIMIT %s"
-    params += [q, _LEG_CAP]
+    params += [q, search_caps()[0]]
     await cur.execute(sql, params)
     return [(str(nid), sim) for nid, sim in await cur.fetchall()]
 
@@ -431,7 +452,7 @@ async def _lexical_leg(cur, space_id, query, scope_set, types, include_inactive)
     sql += " AND search @@ websearch_to_tsquery('english', %s)"
     params.append(query)
     sql += " ORDER BY ts_rank_cd(search, websearch_to_tsquery('english', %s)) DESC LIMIT %s"
-    params += [query, _LEG_CAP]
+    params += [query, search_caps()[0]]
     await cur.execute(sql, params)
     return [str(nid) for (nid,) in await cur.fetchall()]
 

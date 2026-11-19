@@ -15,6 +15,9 @@
   record `io.github.devon-clarkk/engraphy` stays at version 0.3.0.
 
 ### Added
+- `ENGRAPHY_SEARCH_WIDTH`, an opt-in setting for retrieval measurement. Set to N, a
+  search returns up to N results and each search leg considers at least N
+  candidates. Unset, search keeps its 25-result cap.
 - `packs/dev`, the pack for code work: `component` (an area of code, the anchor
   the rest attach to), `convention`, `anti_pattern`, `boundary` (off limits, or
   approval first), `recurring_bug`, `stakeholder`, `preference`, `decision` and
