@@ -116,27 +116,23 @@ def _gate_ok() -> bool:
 
 
 def augment(run_dir: pathlib.Path, space: str, concurrency: int) -> dict:
-    from engraphy.core import embedding
-    from engraphy.core.dedup import _vector_literal
-    from bench.core.providers import ClaudeCLIClient, QuotaExhausted
+    from bench.core.providers import ClaudeCLIClient
     from bench.lever_transforms import _JSON_OBJ
 
     prompt = (harness.REPO / "bench" / "prompts" / PROMPT).read_text(encoding="utf-8")
     out_dir = run_dir / "multikey"
     out_dir.mkdir(exist_ok=True)
     keys_path = out_dir / "keys.jsonl"
-    done = {}
+    done: dict[str, str] = {}
     if keys_path.exists():
         for line in keys_path.read_text(encoding="utf-8").splitlines():
             row = json.loads(line)
-            done[row["id"]] = row["keys"]
+            if row["keys"]:  # an empty reply is retried, never counted as keyed
+                done[row["id"]] = row["keys"]
     with psycopg.connect(harness.DB) as conn:
         rows = conn.execute("SELECT id::text, title, body, extra_search FROM nodes "
                             "WHERE space_id=%s ORDER BY id", (space,)).fetchall()
-    todo = [r for r in rows if r[0] not in done]
-    batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
     client = ClaudeCLIClient(model=harness.CLAUDE_JUDGE_MODEL)
-    print(f"augment {space}: {len(rows)} memories, {len(done)} keyed, {len(batches)} calls to go")
 
     def call(batch):
         listing = "\n\n".join(f"[{i}] {t}\n{b}" for i, (_, t, b, _) in enumerate(batch, 1))
@@ -154,6 +150,25 @@ def augment(run_dir: pathlib.Path, space: str, concurrency: int) -> dict:
                 enumerate(batch, 1)]
 
     stopped = None
+    for attempt in range(1, 4):  # memories left without keys are retried, up to three passes
+        todo = [r for r in rows if r[0] not in done]
+        if not todo:
+            break
+        batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
+        print(f"augment {space} pass {attempt}: {len(rows)} memories, {len(done)} keyed, "
+              f"{len(batches)} calls to go", flush=True)
+        stopped = _key_pass(batches, call, keys_path, done, concurrency)
+        if stopped:
+            break
+    if stopped:
+        print(f"stopped: {stopped}; rerun to resume")
+        return {"stopped": stopped, "keyed": len(done), "memories": len(rows)}
+    return _apply(rows, done, space, out_dir)
+
+
+def _key_pass(batches, call, keys_path, done, concurrency):
+    from bench.core.providers import QuotaExhausted
+    stopped = None
     with keys_path.open("a", encoding="utf-8", newline="\n") as sink, \
             cf.ThreadPoolExecutor(max_workers=concurrency) as pool:
         for start in range(0, len(batches), 25):
@@ -164,16 +179,19 @@ def augment(run_dir: pathlib.Path, space: str, concurrency: int) -> dict:
                 for result in pool.map(call, batches[start:start + 25]):
                     for nid, k in result:
                         sink.write(json.dumps({"id": nid, "keys": k}) + "\n")
-                        done[nid] = k
+                        if k:
+                            done[nid] = k
                     sink.flush()
             except QuotaExhausted as exc:
                 stopped = f"quota: {exc}"[:200]
                 break
             print(f"  {min(len(batches), start + 25)}/{len(batches)} calls", flush=True)
-    if stopped:
-        print(f"stopped: {stopped}; rerun to resume")
-        return {"stopped": stopped, "keyed": len(done), "memories": len(rows)}
+    return stopped
 
+
+def _apply(rows, done, space, out_dir):
+    from engraphy.core import embedding
+    from engraphy.core.dedup import _vector_literal
     embedding.load_model()
     updated = empty = 0
     with psycopg.connect(harness.DB) as conn:
@@ -194,8 +212,8 @@ def augment(run_dir: pathlib.Path, space: str, concurrency: int) -> dict:
             updated += 1
         conn.commit()
     summary = {"space": space, "memories": len(rows), "updated": updated,
-               "without_keys": empty, "prompt": PROMPT, "batch": BATCH,
-               "model": harness.CLAUDE_JUDGE_MODEL}
+               "without_keys": empty, "without_keys_share": round(empty / max(1, len(rows)), 4),
+               "prompt": PROMPT, "batch": BATCH, "model": harness.CLAUDE_JUDGE_MODEL}
     (out_dir / "augment.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary
 
@@ -237,7 +255,10 @@ def main() -> int:
     elif args.command == "augment":
         summary = augment(run_dir, clone_space, args.concurrency)
         print(json.dumps(summary, indent=2))
-        return 3 if summary.get("stopped") else 0
+        if summary.get("stopped"):
+            return 3
+        # more than 2% of memories without keys after three passes: not a fair arm
+        return 5 if summary.get("without_keys_share", 0) > 0.02 else 0
     else:
         print(json.dumps(asyncio.run(envelopes(run_dir, src, clone_space, arm_cfg)), indent=2))
     return 0
