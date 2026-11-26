@@ -36,8 +36,17 @@ from engraphy.server.tools.write import link, resolve_duplicate, supersede, upda
 # positive-control query could then return zero rows and flake. A real unit
 # vector keeps every distance well-defined.
 _UNIT_EMB = "[1," + ",".join(["0"] * 383) + "]"
+# RLS tables the app role can read, so a cross-space probe gets a row count and
+# the count is the isolation claim.
 _RLS_TABLES = ("nodes", "edges", "scopes", "scope_grants", "principals",
-               "pending_writes", "inbox", "dedup_log", "metrics_rollup")
+               "pending_writes", "inbox", "metrics_rollup")
+
+# dedup_log has no read policy at all: it is internal analytics, never read over
+# a tool surface (migration 0010's header), so the app role holds no SELECT on
+# it and a probe is refused before RLS is consulted. Asserted separately below
+# rather than folded into the count check, because "refused" and "zero rows" are
+# different claims and only one of them is true here.
+_NO_READ_POLICY_TABLES = ("dedup_log",)
 
 
 def _seed_space(cur, space_id, principal):
@@ -300,6 +309,18 @@ async def test_rls_a_transaction_sees_zero_b_rows_in_every_table(pool, two_space
             cur = await c.execute(f"SELECT count(*) FROM {table} WHERE space_id = %s", (env["b"],))
             (count,) = await cur.fetchone()
             assert count == 0, f"space A saw {count} rows of B in {table}"
+
+
+async def test_a_table_with_no_read_policy_is_refused_outright(pool, two_spaces):
+    """The stronger half of the same wall. A table the app role may not read at
+    all cannot leak a row of any space, B's included, and the refusal lands at
+    the grant rather than at a policy -- so the table is closed even to a
+    transaction carrying no identity, and to one whose policies were dropped."""
+    env = two_spaces
+    for table in _NO_READ_POLICY_TABLES:
+        async with transaction(pool, env["a"], "pa") as c:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                await c.execute(f"SELECT count(*) FROM {table} WHERE space_id = %s", (env["b"],))
 
 
 async def test_dedup_candidate_ann_query_cannot_reach_b(pool, two_spaces):
