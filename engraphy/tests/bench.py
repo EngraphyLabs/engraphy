@@ -112,14 +112,20 @@ def _ensure_role(conn) -> None:
         f"CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_ROLE_PASSWORD}' "
         f"NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE; END IF; END $$;"
     )
-    rls = "nodes, edges, scopes, scope_grants, principals, pending_writes, inbox, dedup_log"
     ro = "spaces, node_types, edge_types, edge_rules, config"
     ungated = "api_tokens"
     append_only = "audit_log"
     cur.execute(f"GRANT CONNECT ON DATABASE {conn.info.dbname} TO {APP_ROLE}")
     cur.execute(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE}")
-    cur.execute(f"GRANT SELECT, INSERT, UPDATE ON {rls} TO {APP_ROLE}")
-    cur.execute(f"GRANT DELETE ON pending_writes TO {APP_ROLE}")
+    # Each RLS table gets exactly the commands its policies admit; see
+    # conftest.py and deploy/provision-app-role.sql for why.
+    cur.execute(f"GRANT SELECT, INSERT, UPDATE ON nodes, scopes, principals, inbox, metrics_rollup TO {APP_ROLE}")
+    cur.execute(f"GRANT SELECT, INSERT ON edges, scope_grants TO {APP_ROLE}")
+    cur.execute(f"REVOKE UPDATE ON edges, scope_grants FROM {APP_ROLE}")
+    cur.execute(f"GRANT SELECT, INSERT, DELETE ON pending_writes TO {APP_ROLE}")
+    cur.execute(f"REVOKE UPDATE ON pending_writes FROM {APP_ROLE}")
+    cur.execute(f"GRANT INSERT ON dedup_log TO {APP_ROLE}")
+    cur.execute(f"REVOKE SELECT, UPDATE ON dedup_log FROM {APP_ROLE}")
     cur.execute(f"GRANT SELECT ON {ro} TO {APP_ROLE}")
     cur.execute(f"GRANT SELECT, INSERT, UPDATE ON {ungated} TO {APP_ROLE}")
     cur.execute(f"GRANT SELECT, INSERT ON {append_only} TO {APP_ROLE}")
