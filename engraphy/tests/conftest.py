@@ -31,22 +31,31 @@ APP_ROLE = "engraphy_app"
 APP_ROLE_PASSWORD = "engraphy_app_test_only"
 APP_DATABASE_URL = DATABASE_URL.replace("postgres:engraphy@", f"{APP_ROLE}:{APP_ROLE_PASSWORD}@")
 
-_RLS_TABLES = ("nodes", "edges", "scopes", "scope_grants", "principals", "pending_writes", "inbox", "dedup_log", "metrics_rollup")
-_READ_ONLY_TABLES = ("spaces", "node_types", "edge_types", "edge_rules", "config")
-# api_tokens takes UPDATE (resolve_token stamps last_used_at); audit_log is
-# append-only, so it takes SELECT + INSERT and no UPDATE. Mirrors
-# deploy/provision-app-role.sql, which this fixture is the test counterpart of.
-_UNGATED_WRITE_TABLES = ("api_tokens",)
-_APPEND_ONLY_TABLES = ("audit_log",)
-
+# RLS-gated tables, grouped by the commands their policies admit. Under FORCE
+# RLS a command with no policy is denied whatever the grant says, so each group
+# is granted exactly its policy set and no more. Mirrors
+# deploy/provision-app-role.sql; test_app_role_grants.py asserts both agree with
+# the policies in engraphy/db/schema.sql.
+_RLS_SIU_TABLES = ("nodes", "scopes", "principals", "inbox", "metrics_rollup")
+_RLS_SI_TABLES = ("edges", "scope_grants")
 # The product's ONLY DELETE grant: resolve_duplicate consumes the parked row it
 # resolves (QUESTIONS.md "pending-write-consumption", resolved 2026-07-16).
 # Paired with migration 0011's pending_writes_delete policy and useless without
 # it -- FORCE RLS turns a policy-less DELETE into a silent zero-row no-op rather
 # than an error, so granting this alone would hide un-consumed parked writes
 # behind a success envelope. Everything else in the schema is append-or-update-
-# only (01: no hard deletes).
-_DELETE_TABLES = ("pending_writes",)
+# only (01: no hard deletes). No UPDATE: a parked write is settled or dropped,
+# never edited.
+_RLS_SID_TABLES = ("pending_writes",)
+# dedup_log is internal analytics, never read over a tool surface, so the
+# migrations give it a write policy and no read policy (migration 0010's header).
+_RLS_INSERT_ONLY_TABLES = ("dedup_log",)
+_READ_ONLY_TABLES = ("spaces", "node_types", "edge_types", "edge_rules", "config")
+# api_tokens takes UPDATE (resolve_token stamps last_used_at); audit_log is
+# append-only, so it takes SELECT + INSERT and no UPDATE. Mirrors
+# deploy/provision-app-role.sql, which this fixture is the test counterpart of.
+_UNGATED_WRITE_TABLES = ("api_tokens",)
+_APPEND_ONLY_TABLES = ("audit_log",)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -74,8 +83,13 @@ def _ensure_app_role():
         )
         cur.execute(f"GRANT CONNECT ON DATABASE {c.info.dbname} TO {APP_ROLE}")
         cur.execute(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE}")
-        cur.execute(f"GRANT SELECT, INSERT, UPDATE ON {', '.join(_RLS_TABLES)} TO {APP_ROLE}")
-        cur.execute(f"GRANT DELETE ON {', '.join(_DELETE_TABLES)} TO {APP_ROLE}")
+        cur.execute(f"GRANT SELECT, INSERT, UPDATE ON {', '.join(_RLS_SIU_TABLES)} TO {APP_ROLE}")
+        cur.execute(f"GRANT SELECT, INSERT ON {', '.join(_RLS_SI_TABLES)} TO {APP_ROLE}")
+        cur.execute(f"REVOKE UPDATE ON {', '.join(_RLS_SI_TABLES)} FROM {APP_ROLE}")
+        cur.execute(f"GRANT SELECT, INSERT, DELETE ON {', '.join(_RLS_SID_TABLES)} TO {APP_ROLE}")
+        cur.execute(f"REVOKE UPDATE ON {', '.join(_RLS_SID_TABLES)} FROM {APP_ROLE}")
+        cur.execute(f"GRANT INSERT ON {', '.join(_RLS_INSERT_ONLY_TABLES)} TO {APP_ROLE}")
+        cur.execute(f"REVOKE SELECT, UPDATE ON {', '.join(_RLS_INSERT_ONLY_TABLES)} FROM {APP_ROLE}")
         cur.execute(f"GRANT SELECT ON {', '.join(_READ_ONLY_TABLES)} TO {APP_ROLE}")
         cur.execute(f"GRANT SELECT, INSERT, UPDATE ON {', '.join(_UNGATED_WRITE_TABLES)} TO {APP_ROLE}")
         cur.execute(f"GRANT SELECT, INSERT ON {', '.join(_APPEND_ONLY_TABLES)} TO {APP_ROLE}")
