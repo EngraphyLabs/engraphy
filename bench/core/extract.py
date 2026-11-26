@@ -408,8 +408,25 @@ def _render_window(window: ExtractWindow, node_types: dict, edge_types: tuple,
         lines.append("")
     for turn in window.turns:
         prefix = f"[{turn.turn_id}] " if (show_turn_ids and turn.turn_id) else ""
-        lines.append(f"{prefix}{turn.speaker}: {turn.text}")
+        lines.append(f"{prefix}{turn.speaker}: {_quote_turn_text(turn.text)}")
     return "\n".join(lines)
+
+
+def _quote_turn_text(text: str) -> str:
+    """Turn text, with its own line structure kept but unable to open a section.
+
+    The window is one plain-text user turn in which the harness's headings
+    (`# Types`, `# Memories already stored from earlier sessions`,
+    `# Conversation window`) and the transcript share a single channel. Turn
+    text is whatever a conversation contained, it can run to several lines, and
+    a line of it beginning `#` would read as another heading -- which is how a
+    transcript gets to announce its own list of prior memories for the
+    extractor to supersede against, or its own instructions. Every continuation
+    line is indented, so the transcript can style itself however it likes and
+    still cannot start a heading. Indentation is invisible to what the model is
+    being asked to extract, so this costs the extraction nothing.
+    """
+    return text.replace("\n", "\n  ")
 
 
 def _drafts_from_payload(

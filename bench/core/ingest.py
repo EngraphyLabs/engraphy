@@ -626,13 +626,25 @@ def _supersede_target(
     available: a local draft id, a prior memory's exact title (what the LLM
     extractor is shown), or an already-real node id.
 
-    A reference that is none of them -- a hallucinated title, or a draft that
-    merged and so never became a node -- must return None so the caller counts
-    it as `supersede_target_unresolved`. Passing the raw string through to
-    `dedup.supersede` instead would surface it as a generic write error, which
-    is the wrong story: it is an *extraction* failure, and that counter is the
-    honest measure of how much of the knowledge-update result is extraction
-    rather than engine.
+    Every one of them must name a node THIS run produced. The reference reaches
+    here from extractor output, and the LLM extractor's output is derived from
+    conversation text the harness does not control: a window carries whatever
+    the transcript says, including text shaped like an instruction. `old_id`
+    goes to `dedup.supersede`, which flips the named node to
+    status='superseded', so an id taken on faith is a retirement of whatever it
+    happens to address. The engine's own guards bound that (RLS requires the
+    node readable and its scope writable, and supersede requires it active and
+    the same type), which keeps it inside the writer's own reach rather than
+    across spaces -- but the handle itself must not be the thing that widens
+    the reach, so a uuid is accepted only when this run already knows it.
+
+    A reference that is none of them -- a hallucinated title, an id from
+    nowhere, or a draft that merged and so never became a node -- must return
+    None so the caller counts it as `supersede_target_unresolved`. Passing the
+    raw string through to `dedup.supersede` instead would surface it as a
+    generic write error, which is the wrong story: it is an *extraction*
+    failure, and that counter is the honest measure of how much of the
+    knowledge-update result is extraction rather than engine.
     """
     ref = draft.supersedes_local_id
     if ref is None:
@@ -640,7 +652,24 @@ def _supersede_target(
     hit = resolved.get(ref) or by_title.get(ref)
     if hit:
         return hit
-    return ref if _looks_like_node_id(ref) else None
+    if not _looks_like_node_id(ref):
+        return None
+    # A bare uuid, for an extractor that holds real ids. Honoured only when it
+    # is an id this run wrote, so it addresses the same set the other two
+    # handles do. The LLM extractor never takes this path: it is shown titles
+    # and nothing else (see `by_title` where it is built).
+    known = set(resolved.values()) | set(by_title.values())
+    return ref if ref in known else None
+
+
+def _supersede_target_is_known(ref: str, resolved: dict[str, str], by_title: dict[str, str]) -> bool:
+    """Whether `ref` names a node this run produced, by any of the three handles.
+    Exposed for the regression test, which checks the rule rather than one path."""
+    return bool(
+        resolved.get(ref)
+        or by_title.get(ref)
+        or (_looks_like_node_id(ref) and ref in (set(resolved.values()) | set(by_title.values())))
+    )
 
 
 def _looks_like_node_id(value: str) -> bool:
