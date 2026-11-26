@@ -63,6 +63,14 @@ jobs:
           sudo sed -i 's|deb https|deb [signed-by=/usr/share/keyrings/postgresql.gpg] https|' /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y postgresql-client-16
+          # Installing 16 is necessary but not sufficient: /usr/bin/pg_dump is
+          # Debian's wrapper, and it dispatches to the HIGHEST installed major
+          # version, so whatever newer client the runner image carries wins on
+          # PATH. Put 16's own bin directory first, for this step and for every
+          # later one, which is what actually selects the version the suite
+          # shells out to.
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/16/bin:$PATH"
           # Proof, not assumption: fail loudly here rather than let a version
           # mismatch surface as a confusing pg_dump/pg_restore error later.
           pg_dump --version | grep -q ' 16\.' || { echo "pg_dump is not version 16 -- mismatches the pgvector/pg16 service"; pg_dump --version; exit 1; }
