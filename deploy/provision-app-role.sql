@@ -11,8 +11,10 @@
 -- closes: "Production provisioning of the app role needs this same grant --
 -- flag for the E3 deploy docs" (referring specifically to the
 -- schema_migrations grant /healthz depends on). Keep this file's GRANT list
--- in sync with conftest.py's _RLS_TABLES / _READ_ONLY_TABLES /
--- _UNGATED_WRITE_TABLES / _DELETE_TABLES if the schema's table set changes.
+-- in sync with conftest.py's _RLS_SIU_TABLES / _RLS_SI_TABLES /
+-- _RLS_SID_TABLES / _RLS_INSERT_ONLY_TABLES / _READ_ONLY_TABLES /
+-- _UNGATED_WRITE_TABLES / _APPEND_ONLY_TABLES if the schema's table set or
+-- policy set changes. engraphy/tests/test_app_role_grants.py checks it.
 --
 -- Usage (cloud/compose profile -- runs in the `admin` sidecar, which carries
 -- psql; nothing needs to be installed on the host, and postgres needs no
@@ -63,25 +65,63 @@ END $$;
 
 GRANT USAGE ON SCHEMA public TO engraphy_app;
 
--- RLS-gated tables: the app role needs SELECT/INSERT/UPDATE to reach them at
--- all, but FORCE ROW LEVEL SECURITY (already set by the migrations) is what
--- actually restricts which rows -- these GRANTs alone would let the role see
--- everything if RLS were ever disabled, which is exactly why FORCE matters.
+-- RLS-gated tables. A grant is what lets the role reach the table at all;
+-- FORCE ROW LEVEL SECURITY (set by the migrations) is what restricts which
+-- rows, which is why FORCE matters: these grants alone would expose everything
+-- if RLS were ever disabled on a table.
+--
+-- Each table is granted exactly the commands its policies admit, and no more.
+-- Under FORCE RLS a command with no policy is denied whatever the grant says,
+-- so a grant wider than the policy set can never be exercised -- it is simply a
+-- privilege held for no reason, waiting for a disabled policy or a future
+-- careless one to make it live. The three groups below are the policy sets the
+-- migrations actually create (engraphy/db/schema.sql is the generated record of
+-- them), and engraphy/tests/test_app_role_grants.py asserts the two agree, so a
+-- new policy that needs a new grant fails the suite rather than the deployment.
+
+-- SELECT + INSERT + UPDATE: a read policy, a write policy and an update policy.
 GRANT SELECT, INSERT, UPDATE ON
-  nodes, edges, scopes, scope_grants, principals, pending_writes, inbox, dedup_log,
-  metrics_rollup
+  nodes, scopes, principals, inbox, metrics_rollup
   TO engraphy_app;
 
--- The schema's only DELETE grant (resolve_duplicate consumes the parked row
--- it resolves) -- see migration 0011's header comment.
-GRANT DELETE ON pending_writes TO engraphy_app;
+-- SELECT + INSERT: no UPDATE policy exists (an edge and a grant are created and
+-- read, never rewritten in place).
+GRANT SELECT, INSERT ON edges, scope_grants TO engraphy_app;
+REVOKE UPDATE ON edges, scope_grants FROM engraphy_app;
+
+-- pending_writes carries the schema's only DELETE policy (resolve_duplicate
+-- consumes the parked row it resolves, and discard drops it) -- see migration
+-- 0011's header. It has no UPDATE policy: a parked write is settled or dropped,
+-- never edited.
+GRANT SELECT, INSERT, DELETE ON pending_writes TO engraphy_app;
+REVOKE UPDATE ON pending_writes FROM engraphy_app;
+
+-- dedup_log is INSERT-only by design: it is internal analytics, never read over
+-- a tool surface, so the migrations give it a write policy and no read policy
+-- (DECISIONS-DELTA; migration 0010's header states it). Its rows are read by an
+-- operator connection, which needs no grant of the app role's.
+GRANT INSERT ON dedup_log TO engraphy_app;
+REVOKE SELECT, UPDATE ON dedup_log FROM engraphy_app;
 
 -- Read-only support tables (registries + config -- written only by
 -- engraphy-admin pack apply/upgrade, never by the running server).
 GRANT SELECT ON spaces, node_types, edge_types, edge_rules, config TO engraphy_app;
 
 -- Not RLS-covered (instance-level / append-only audit).
-GRANT SELECT, INSERT, UPDATE ON api_tokens, audit_log TO engraphy_app;
+--
+-- api_tokens takes UPDATE: resolve_token stamps last_used_at on every request,
+-- and `token revoke` sets revoked.
+GRANT SELECT, INSERT, UPDATE ON api_tokens TO engraphy_app;
+
+-- audit_log takes SELECT and INSERT only. Every one of the engine's five
+-- audit_log statements is an INSERT (core.dedup, core.search, core.briefing,
+-- server/tools/admin, admin/addenda), so append-only is what the role needs to
+-- do its job, and withholding UPDATE is what makes the trail's own history
+-- unrewritable by the process that writes it. REVOKE as well as GRANT: this
+-- script is idempotent and re-run after every migration, so it has to converge
+-- a cluster provisioned under a wider grant rather than only a fresh one.
+GRANT SELECT, INSERT ON audit_log TO engraphy_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON audit_log FROM engraphy_app;
 
 GRANT EXECUTE ON FUNCTION engraphy_readable_scopes() TO engraphy_app;
 GRANT EXECUTE ON FUNCTION engraphy_writable_scopes() TO engraphy_app;
