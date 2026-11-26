@@ -15,6 +15,12 @@
   record `io.github.devon-clarkk/engraphy` stays at version 0.3.0.
 
 ### Added
+- Operator guidance for conversational spaces on the default `onnx-fp32`
+  profile: set `dedup.t_low` to 0.86 with `engraphy-admin config set`. On three
+  LoCoMo stores it cuts the writes that ask an agent to confirm from 63% to 74%
+  to 24% to 33%, with no duplicate found among 150 judged pairs below 0.86 and
+  the answer score unchanged. The code default stays 0.80
+  ([docs/03-packs.md](docs/03-packs.md)).
 - `packs/dev`, the pack for code work: `component` (an area of code, the anchor
   the rest attach to), `convention`, `anti_pattern`, `boundary` (off limits, or
   approval first), `recurring_bug`, `stakeholder`, `preference`, `decision` and

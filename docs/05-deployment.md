@@ -72,6 +72,11 @@ engraphy-admin config set --space <space> --key dedup.t_low --value 0.80
 The `onnx-fp32` and `legacy-torch` profiles need none of this. They are
 bit-reproducible and leave 0.040 of room at the same edge.
 
+**Conversational spaces on `onnx-fp32` run with `dedup.t_low` at 0.86.** It
+cuts the writes that ask an agent to confirm by more than half, with no measured
+loss of real duplicates. The measurement is in
+[docs/03-packs.md](03-packs.md#conversational-spaces-on-onnx-fp32-dedupt_low-086).
+
 **`micro` moves four thresholds, not two, and ships all four calibrated.** It
 runs a different model, so every absolute cosine in the engine moves with it:
 

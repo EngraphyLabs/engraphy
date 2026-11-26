@@ -159,6 +159,33 @@ Raise `t_high` toward 1.0 to make auto-merge stricter (more things stay distinct
 raise `t_low` to shrink the pending band. Bands must satisfy
 `0 < t_low ≤ t_high ≤ 1`.
 
+### Conversational spaces on `onnx-fp32`: `dedup.t_low` 0.86
+
+A space that holds a long conversation, such as one built from the `conversational`
+pack, keeps its memories close together on the cosine scale: they share the same
+speakers, names and register, so a new memory's nearest neighbour usually sits
+between 0.75 and 0.85 whether or not it repeats anything. Set `t_low` to 0.86 on
+such a space:
+
+```bash
+engraphy-admin config set --space <space> --key dedup.t_low --value 0.86
+```
+
+Measured on three LoCoMo stores (6,612 writes, default `onnx-fp32` profile):
+
+- Writes that ask the agent to confirm fall from 63% to 74% of writes to 24% to 33%.
+- An adjudicating model found no duplicate among 150 sampled pairs in
+  `[0.80, 0.86)`, which bounds the duplicate rate there at 2% (95%). In the
+  `[0.89, 0.95)` control it found paraphrase duplicates, as expected.
+- Search returns the same memories for every question apart from ties between
+  equal scores, and the answer score is unchanged.
+
+The value is calibrated for conversational stores on `onnx-fp32`. `onnx-int8` and
+`micro` use different cosine scales ([docs/05-deployment.md](05-deployment.md)),
+and stores of short technical notes sit lower on the scale, so keep the default
+there. The measurement and its data are in
+[engraphy-benchmarks](https://github.com/EngraphyLabs/engraphy-benchmarks/blob/analysis/dedup-band-retune/analysis/2026-11-26-dedup-t-low-validation.md).
+
 ## A complete worked example
 
 Save as `reading-pack.yaml`:
