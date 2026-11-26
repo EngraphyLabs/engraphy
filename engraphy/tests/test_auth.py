@@ -233,3 +233,76 @@ async def test_read_rate_limits_defaults_and_overrides(pool, token_space, conn):
     conn.commit()
     async with pool.connection() as c:
         assert await read_rate_limits(c, token_space) == (120, 45)
+
+
+def test_failure_tracker_holds_no_state_for_a_source_that_never_failed():
+    """is_banned is reached before the bearer is resolved (app.py's
+    BearerAuthMiddleware checks the ban first), so every request from a new
+    source address asks about a key this process has never seen. Asking must not
+    make the tracker remember it: an unauthenticated caller varying its source
+    address would otherwise grow the tracker once per request."""
+    ft = FailureTracker()
+    for i in range(5000):
+        assert not ft.is_banned(f"10.0.{i // 256}.{i % 256}")
+    assert len(ft._fails) == 0
+
+
+def test_failure_tracker_forgets_a_source_once_its_window_empties():
+    clock = {"t": 0.0}
+    ft = FailureTracker(threshold=3, window_seconds=10.0, now=lambda: clock["t"])
+    for i in range(1000):
+        ft.record_failure(f"src-{i}")
+    assert len(ft._fails) == 1000
+    clock["t"] += 11.0                                # every window has passed
+    for i in range(1000):
+        assert not ft.is_banned(f"src-{i}")
+    assert len(ft._fails) == 0                     # and nothing is kept
+
+
+def test_failure_tracker_caps_the_keys_one_burst_can_hold():
+    """The window-empties rule alone does not bound a burst: 100k distinct
+    sources inside one window would all still be live. The cap does."""
+    ft = FailureTracker(threshold=3, window_seconds=60.0, now=lambda: 0.0,
+                        max_tracked_keys=64)
+    for i in range(5000):
+        ft.record_failure(f"src-{i}")
+    assert len(ft._fails) <= 64
+
+
+def test_failure_tracker_cap_keeps_the_newest_sources_and_still_bans():
+    """Eviction drops the stalest key, never the one actively failing, so a
+    cap can neither forgive an attacker mid-burst nor over-ban anyone."""
+    clock = {"t": 0.0}
+    ft = FailureTracker(threshold=3, window_seconds=600.0, now=lambda: clock["t"],
+                        max_tracked_keys=4)
+    for _ in range(3):
+        ft.record_failure("attacker")                 # reaches the threshold
+    assert ft.is_banned("attacker")
+    for i in range(50):                               # pressure from other sources
+        clock["t"] += 1.0
+        ft.record_failure(f"noise-{i}")
+        ft.record_failure("attacker")                 # still active, so still newest
+    assert len(ft._fails) <= 4
+    assert ft.is_banned("attacker")
+
+
+def test_rate_limiter_forgets_tokens_whose_windows_have_passed():
+    clock = {"t": 0.0}
+    rl = RateLimiter(now=lambda: clock["t"], max_tracked_keys=64)
+    for i in range(5000):
+        rl.check(f"token-{i}", "read")
+    assert len(rl._events) <= 65                     # cap, plus the live window
+    clock["t"] += 61.0
+    rl.check("token-fresh", "read")
+    assert len(rl._events) <= 65
+
+
+def test_rate_limiter_sweep_never_forgives_a_live_window():
+    """A sweep runs on the same call that is about to record an event, so the
+    window it is recording into must survive it."""
+    rl = RateLimiter(now=lambda: 0.0, max_tracked_keys=2)
+    for _ in range(30):
+        rl.check("tok", "write")
+    with pytest.raises(ToolError) as exc:
+        rl.check("tok", "write")
+    assert exc.value.code == "RATE_LIMITED"
